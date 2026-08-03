@@ -1,3 +1,8 @@
+<div align="center">
+
+<img width="300" height="300" alt="MagSleep" src="https://github.com/user-attachments/assets/6f1c5c78-154f-41c2-a0f9-9059a4d3b13b" />
+
+
 # MagSleep
 
 A tiny macOS menu bar app that turns off your MagSafe LED when the MacBook sleeps, and hands it back to macOS when it wakes.
@@ -8,6 +13,8 @@ Perfect for a dark bedroom: no amber glow from the charger while you sleep.
 ![Arch](https://img.shields.io/badge/Apple%20Silicon-arm64-black)
 ![Language](https://img.shields.io/badge/Swift-6-orange)
 ![License](https://img.shields.io/badge/personal%20use-welcome-lightgrey)
+
+</div>
 
 ## Requirements
 
