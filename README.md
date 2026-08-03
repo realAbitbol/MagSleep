@@ -7,7 +7,7 @@
 
 A tiny macOS menu bar app that turns off your MagSafe LED when the MacBook sleeps, and hands it back to macOS when it wakes.
 
-Perfect for a dark bedroom: no amber glow from the charger while you sleep.
+Perfect for a dark bedroom: no green/amber glow from the charger while you sleep.
 
 ![Platform](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Arch](https://img.shields.io/badge/Apple%20Silicon-arm64-black)
@@ -29,17 +29,17 @@ Intel Macs are not supported.
 
 ### From a DMG
 
-1. Build a disk image (or grab a release if you publish one):
+1. Download [HERE](https://github.com/realAbitbol/MagSleep/releases/download/v1.0.0/MagSleep-1.0.0.dmg)
+2. Open `MagSleep-1.0.0.dmg` and drag **MagSleep** into **Applications**. (if you get an error see below)
+3. Launch MagSleep (it will appear as a moon icon in the menu bar).
+4. Click on the menu bar icon
+5. Choose **Enable MagSleep…** and enter your admin password.
 
-   ```bash
-   make dmg
-   ```
 
-2. Open `dist/MagSleep-1.0.0.dmg` and drag **MagSleep** into **Applications**.
-3. Launch MagSleep (moon icon in the menu bar).
-4. Choose **Enable MagSleep…** and enter your admin password.
-
-If Gatekeeper blocks the unsigned build: right-click the app → **Open**.
+> [!IMPORTANT]
+> The app isn't notarized so if Gatekeeper blocks the unsigned build you can:
+> - Right-click the app → **Open**. (unlikely to work on Tahoe)
+> - If above fails open the terminal and run `xattr -dr com.apple.quarantine /Applications/MagSleep.app`
 
 ### From source
 
@@ -115,6 +115,6 @@ sudo rm -rf /Library/Logs/MagSleep
 
 Override the version with `make dmg VERSION=1.0.1`.
 
-## Support
+## Support ☕
 
 If MagSleep keeps your nights a little darker, you can [buy me a coffee](https://ko-fi.com/realabitbol).
