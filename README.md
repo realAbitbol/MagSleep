@@ -1,7 +1,6 @@
 <div align="center">
 
-<img width="300" height="300" alt="MagSleep" src="https://github.com/user-attachments/assets/6f1c5c78-154f-41c2-a0f9-9059a4d3b13b" />
-
+<img width="300" height="300" alt="MagSleep" src="https://github.com/user-attachments/assets/be61ac1c-3fd5-48c2-9749-7b62d5d10916" />
 
 # MagSleep
 
@@ -29,8 +28,8 @@ Intel Macs are not supported.
 
 ### From a DMG
 
-1. Download [HERE](https://github.com/realAbitbol/MagSleep/releases/download/v1.0.0/MagSleep-1.0.0.dmg)
-2. Open `MagSleep-1.0.0.dmg` and drag **MagSleep** into **Applications**. (if you get an error see below)
+1. Download [HERE](https://github.com/realAbitbol/MagSleep/releases/download/v1.0.1/MagSleep-1.0.1.dmg)
+2. Open `MagSleep-1.0.1.dmg` and drag **MagSleep** into **Applications**. (if you get an error see below)
 3. Launch MagSleep (it will appear as a moon icon in the menu bar).
 4. Click on the menu bar icon
 5. Choose **Enable MagSleep…** and enter your admin password.
