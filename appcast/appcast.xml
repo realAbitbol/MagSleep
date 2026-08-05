@@ -3,6 +3,31 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.3</title>
+            <pubDate>Wed, 05 Aug 2026 21:42:13 +0200</pubDate>
+            <sparkle:version>202608052142</sparkle:version>
+            <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Added
+
+- **First-run onboarding window**: installs the helper, picks Sleep Mode vs Always Off, and sets Launch at Login in one step. Modern macOS layout — app-icon header, tappable mode cards, and a Launch-at-Login switch. Onboarding is mandatory: the app cannot function without the helper, so the only ways out are installing it or **Cancel & Quit** (a declined admin prompt shows an in-window error and lets the user retry)
+- **Report a Problem…** menu item: opens the GitHub issue tracker with app/helper versions pre-filled
+
+### Changed
+
+- The menu no longer shows a redundant greyed status line at the top — state is conveyed by the menu bar icon and the mode checkmarks
+- The mode checkmark now reflects the persisted config immediately at launch (previously it stayed unchecked until the 15s refresh timer fired when the helper was healthy)
+- `make release` uses the release's `CHANGELOG.md` section as the GitHub release body and Sparkle update notes
+
+### Removed
+
+- **Homebrew distribution** (cask + `realAbitbol/homebrew-tap` publishing): Homebrew is phasing out casks that require Gatekeeper overrides for unnotarized apps on September 1, 2026, so the DMG is the sole distribution channel
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.3/MagSleep-1.2.3.zip" length="2137393" type="application/octet-stream" sparkle:edSignature="tVWfNFTVAT3qbgoLb2zhHuKF+/dHbNh0Ck44G+u6lfKlg90FVQ6XNOKYMQBqe2wrpfrw3sZA69PqEVMS904hBg=="/>
+        </item>
+        <item>
             <title>1.2.2</title>
             <pubDate>Wed, 05 Aug 2026 15:53:00 +0200</pubDate>
             <sparkle:version>202608051552</sparkle:version>
@@ -36,15 +61,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.1/MagSleep-1.2.1.zip" length="2182468" type="application/octet-stream" sparkle:edSignature="kR+Tz/av4qn0fhaiCQHhSpFsaBD/kcOCMI8Vy35sAW/uL7Uo8l0fvXo2/0NLokF664wlC6l+CcnOF/1wR9adAg=="/>
-        </item>
-        <item>
-            <title>1.2.0</title>
-            <pubDate>Wed, 05 Aug 2026 14:45:41 +0200</pubDate>
-            <sparkle:version>202608051447</sparkle:version>
-            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.0/MagSleep-1.2.0.zip" length="2182465" type="application/octet-stream" sparkle:edSignature="tmF9llSpVBwwMzzgwmKwx5HB9w9Agrz+SvxO06NGpX+vqW+0kj+a1655MVeyzMOsSXXCtBMo5vF/0PzEDeyaCw=="/>
         </item>
     </channel>
 </rss>
