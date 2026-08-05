@@ -3,6 +3,20 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.4</title>
+            <pubDate>Wed, 05 Aug 2026 22:07:55 +0200</pubDate>
+            <sparkle:version>202608052207</sparkle:version>
+            <sparkle:shortVersionString>1.2.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Changed
+
+- The helper is now reinstalled only when helper-affecting code actually changes: the app compares the installed helper's **revision** (last commit touching the helper, the shared core it links, or its LaunchDaemon plist) against the bundled revision, instead of the app version — so the unchanged helper is no longer reinstalled on every app update. The About window shows "Helper up to date: Yes/No" instead of a helper version number; Report a Problem shows the helper revision for triage
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.4/MagSleep-1.2.4.zip" length="2139201" type="application/octet-stream" sparkle:edSignature="s+KoTQKygfi46sSzjihZ2vVrsD7wE6Yec0Eo8uTFuEOO4g7jEish/8SEALRxiK9L2aaW+ytIw8IejfWmfbL/BA=="/>
+        </item>
+        <item>
             <title>1.2.3</title>
             <pubDate>Wed, 05 Aug 2026 21:42:13 +0200</pubDate>
             <sparkle:version>202608052142</sparkle:version>
@@ -52,15 +66,6 @@
   socket protocol malformed-input handling, SMC pure logic)
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.2/MagSleep-1.2.2.zip" length="2168563" type="application/octet-stream" sparkle:edSignature="0AgsX1t4HGKyUN7+CnQpj83WFA4eR2YLCZsdywl/sNOfCES7vwU4anxjS0F0ovN1hyY8T3ZwGSC6Uv0HOLD5BQ=="/>
-        </item>
-        <item>
-            <title>1.2.1</title>
-            <pubDate>Wed, 05 Aug 2026 14:49:39 +0200</pubDate>
-            <sparkle:version>202608051449</sparkle:version>
-            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.1/MagSleep-1.2.1.zip" length="2182468" type="application/octet-stream" sparkle:edSignature="kR+Tz/av4qn0fhaiCQHhSpFsaBD/kcOCMI8Vy35sAW/uL7Uo8l0fvXo2/0NLokF664wlC6l+CcnOF/1wR9adAg=="/>
         </item>
     </channel>
 </rss>
