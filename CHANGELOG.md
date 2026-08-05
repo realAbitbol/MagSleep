@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.7] - 2026-08-05
+
+### Changed
+
+- The menu bar version header is **greyed** again — the same dimmed header other menu-bar apps use — reverting the v1.2.6 "no longer greyed" change (the greyed look reads more naturally)
+
 ## [1.2.6] - 2026-08-05
 
 ### Changed

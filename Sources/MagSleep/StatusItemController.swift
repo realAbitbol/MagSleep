@@ -226,14 +226,18 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private func createMenu() {
         let menu = NSMenu()
 
-        // Version header (static). Bold, normal color — not greyed. It stays
-        // selectable-looking but has no action, so clicking does nothing. No
-        // icon: any SF Symbol here would collide with a mode icon.
+        // Version header (static). Bold, greyed — the same dimmed header other
+        // menu-bar apps use. AppKit greys disabled items; clicking does
+        // nothing. No icon: any SF Symbol here would collide with a mode icon.
         let versionItem = NSMenuItem()
         versionItem.attributedTitle = NSAttributedString(
             string: "MagSleep v\(helper.appVersion)",
-            attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
+            attributes: [
+                .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]
         )
+        versionItem.isEnabled = false
         menu.addItem(versionItem)
         menu.addItem(NSMenuItem.separator())
 
