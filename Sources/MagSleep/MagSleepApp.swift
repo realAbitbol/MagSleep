@@ -23,6 +23,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return
         #endif
 
+        // Prevent a second instance (e.g. the binary launched directly instead
+        // of via `open`): two instances would create duplicate status items and
+        // fight over the request file. Activate the existing instance instead.
+        if let bundleID = Bundle.main.bundleIdentifier,
+           let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+               .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+            existing.activate(options: [.activateAllWindows])
+            NSApp.terminate(nil)
+            return
+        }
+
         if !MagSafeLED.isSupported() {
             showUnsupportedAlert(
                 message: "This Mac does not expose MagSafe LED control (ACLC). MagSleep requires an Apple Silicon MacBook with MagSafe 3."

@@ -18,7 +18,7 @@ import os.log
 /// - Falls back to DaemonConfig.default on startup if config is missing or corrupt
 ///
 /// Invoked with --reset: restores the LED to macOS control and exits.
-/// Used by uninstall-helper.sh / disable-helper.sh.
+/// Used by uninstall-helper.sh.
 
 /// IOKit power message IDs (C macros are not imported into Swift).
 /// Values from IOMessage.h via `iokit_common_msg(...)`.
@@ -39,8 +39,13 @@ final class PowerDaemon {
     private var notifierObject: io_object_t = 0
     private var signalSources: [DispatchSourceSignal] = []
     private var requestDirSource: DispatchSourceFileSystemObject?
+    private var requestDirFD: Int32 = -1
     private var powerSourceSource: CFRunLoopSource?
     private var reassertTimer: Timer?
+    /// Persistent SMC connection (opened lazily on first apply; retried on failure).
+    private var smc: SMC.Connection?
+    /// Throttles repeated SMC failure logs to one per distinct message.
+    private var lastSMCLog: String?
 
     func run() {
         log.info("starting")
@@ -153,31 +158,62 @@ final class PowerDaemon {
     // MARK: - Request File (event-driven via directory watch)
 
     private func armRequestDirectoryWatch() {
+        requestDirSource?.cancel()
         let fd = open(MagSleep.requestDirectory, O_EVTONLY)
         guard fd >= 0 else {
             log.error("cannot watch request directory (errno \(errno))")
             return
         }
+        requestDirFD = fd
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .rename, .delete, .extend],
             queue: .main
         )
         source.setEventHandler { [weak self] in
-            self?.processRequestFile()
+            guard let self else { return }
+            // If /tmp/magsleep was deleted and recreated out from under us, the
+            // old fd watches an unlinked inode and would never fire again —
+            // requests would be silently dropped. Re-arm against the live path.
+            self.rearmIfWatchStale()
+            self.processRequestFile()
             // The app writes the request atomically (temp file + rename). If the
             // watch fires before the rename completes we may read an empty file;
             // re-check shortly after so the request is not silently dropped.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self?.processRequestFile()
+                self.processRequestFile()
             }
         }
-        source.setCancelHandler {
+        source.setCancelHandler { [weak self] in
             close(fd)
+            if self?.requestDirFD == fd {
+                self?.requestDirFD = -1
+            }
         }
         source.resume()
         requestDirSource = source
         log.info("watching request directory")
+    }
+
+    /// Re-arms the directory watch when the watched inode no longer matches the
+    /// live path (directory deleted and recreated, e.g. /tmp cleaned by a
+    /// third-party tool). Also recreates a missing directory so the app's next
+    /// request lands somewhere we are watching.
+    private func rearmIfWatchStale() {
+        var watched = stat()
+        if fstat(requestDirFD, &watched) != 0 {
+            armRequestDirectoryWatch()
+            return
+        }
+        var current = stat()
+        if stat(MagSleep.requestDirectory, &current) != 0 {
+            ensureRequestDirectory()
+            armRequestDirectoryWatch()
+            return
+        }
+        if current.st_dev != watched.st_dev || current.st_ino != watched.st_ino {
+            armRequestDirectoryWatch()
+        }
     }
 
     private func processRequestFile() {
@@ -238,6 +274,19 @@ final class PowerDaemon {
     /// on requests, and on power-source changes (to re-assert alwaysOff across
     /// external LED changes like plug-in / charging-state updates).
     private func applyMode() {
+        let smc: SMC.Connection
+        if let existing = self.smc {
+            smc = existing
+        } else {
+            do {
+                smc = try SMC.Connection()
+                self.smc = smc
+            } catch {
+                logThrottled("SMC connection failed: \(error)")
+                return
+            }
+        }
+
         let target: MagSafeLED.Color
         if !config.enabled {
             target = .system
@@ -250,7 +299,18 @@ final class PowerDaemon {
             }
         }
 
-        try? MagSafeLED.set(target)
+        do {
+            try MagSafeLED.set(target, using: smc)
+        } catch {
+            logThrottled("failed to apply mode: \(error)")
+        }
+    }
+
+    /// Logs SMC failures without spamming the unified log on every 3s tick.
+    private func logThrottled(_ message: String) {
+        guard message != lastSMCLog else { return }
+        lastSMCLog = message
+        log.error("\(message, privacy: .public)")
     }
 
     // MARK: - Power Notifications (event-driven sleep/wake detection)
@@ -363,10 +423,19 @@ final class PowerDaemon {
 
     private func startReassertTimer() {
         let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
-            self?.applyMode()
+            self?.reassertActiveMode()
         }
         RunLoop.main.add(timer, forMode: .default)
         reassertTimer = timer
+    }
+
+    /// Periodic re-assert of the active mode. Skipped entirely while disabled:
+    /// the LED belongs to macOS then, and the only SMC write needed is the
+    /// one-shot `.system` transition done by `applyMode()` on the disable
+    /// request. This keeps SMC traffic at zero when MagSleep is off.
+    private func reassertActiveMode() {
+        guard config.enabled else { return }
+        applyMode()
     }
 
     // MARK: - Sleep/Wake Detection (startup seed only)

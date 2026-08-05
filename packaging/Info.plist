@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSSupportsSuddenTermination</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Abitbol</string>
 </dict>

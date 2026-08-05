@@ -66,6 +66,11 @@ final class StatusItemController: NSObject {
         if let observer = wakeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        // `statusItem = nil` alone does not remove the item from the system
+        // status bar — the NSStatusBar keeps a strong reference to it.
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+        }
         statusItem = nil
         menu = nil
     }
@@ -146,9 +151,12 @@ final class StatusItemController: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Launch at Login
+        // Launch at Login (only meaningful when the app runs from /Applications)
         launchAtLoginItem.title = "Launch at Login"
-        launchAtLoginItem.toolTip = "Start MagSleep automatically at login"
+        launchAtLoginItem.toolTip = helper.canManageLaunchAtLogin
+            ? "Start MagSleep automatically at login"
+            : "Move MagSleep.app to /Applications to use this"
+        launchAtLoginItem.isEnabled = helper.canManageLaunchAtLogin
         launchAtLoginItem.target = self
         launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
         launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
@@ -189,10 +197,11 @@ final class StatusItemController: NSObject {
             return
         }
         helper.setMode(.sleep) { [weak self] success in
+            guard let self else { return }
             if success {
-                self?.updateMenuStates()
+                self.updateMenuStates()
             } else {
-                self?.showError("Failed to set sleep mode")
+                self.showError(self.failureMessage("Failed to set sleep mode"))
             }
         }
     }
@@ -203,25 +212,31 @@ final class StatusItemController: NSObject {
             return
         }
         helper.setMode(.alwaysOff) { [weak self] success in
+            guard let self else { return }
             if success {
-                self?.updateMenuStates()
+                self.updateMenuStates()
             } else {
-                self?.showError("Failed to set always off mode")
+                self.showError(self.failureMessage("Failed to set always off mode"))
             }
         }
     }
 
     @objc private func setDisabledMode() {
         helper.disable { [weak self] success in
+            guard let self else { return }
             if success {
-                self?.updateMenuStates()
+                self.updateMenuStates()
             } else {
-                self?.showError("Failed to disable")
+                self.showError(self.failureMessage("Failed to disable"))
             }
         }
     }
 
     @objc private func toggleLaunchAtLogin() {
+        guard helper.canManageLaunchAtLogin else {
+            showError("Move MagSleep.app to /Applications to use Launch at Login.")
+            return
+        }
         do {
             let newState = !helper.launchesAtLogin
             try helper.setLaunchesAtLogin(newState)
@@ -247,9 +262,14 @@ final class StatusItemController: NSObject {
 
         helper.uninstall { [weak self] success in
             if success {
+                // Leave nothing behind: drop the app's preference domain
+                // (LaunchAtLoginPromptShown, etc.) before quitting.
+                if let bundleID = Bundle.main.bundleIdentifier {
+                    UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                }
                 NSApp.terminate(nil)
             } else {
-                self?.showError("Failed to uninstall MagSleep")
+                self?.showError(self?.failureMessage("Failed to uninstall MagSleep") ?? "Failed to uninstall MagSleep")
             }
         }
     }
@@ -328,16 +348,20 @@ final class StatusItemController: NSObject {
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
             helper.enable() { [weak self] success in
+                guard let self else { return }
                 if success {
-                    self?.updateMenuStates()
+                    self.updateMenuStates()
                 } else {
-                    self?.showError("Failed to install helper")
+                    self.showError(self.failureMessage("Failed to install helper"))
                 }
             }
         }
     }
 
     private func showLaunchAtLoginPrompt() {
+        // SMAppService.mainApp can't register a login item for a bundle that
+        // isn't in /Applications — don't offer a feature that can't work.
+        guard helper.canManageLaunchAtLogin else { return }
         let alert = NSAlert()
         alert.messageText = "Launch at Login?"
         alert.informativeText = "Launch MagSleep at login so it can manage your MagSafe LED automatically?"
@@ -366,11 +390,12 @@ final class StatusItemController: NSObject {
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
             helper.install() { [weak self] success in
+                guard let self else { return }
                 if !success {
-                    self?.showError("Failed to update helper")
+                    self.showError(self.failureMessage("Failed to update helper"))
                     NSApp.terminate(nil)
                 } else {
-                    self?.refreshHelperState()
+                    self.refreshHelperState()
                 }
             }
             return true
@@ -387,5 +412,12 @@ final class StatusItemController: NSObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    /// Appends the underlying helper error (if any) to a fallback message so
+    /// failures are diagnosable instead of generic.
+    private func failureMessage(_ fallback: String) -> String {
+        guard let detail = helper.lastError, !detail.isEmpty else { return fallback }
+        return "\(fallback): \(detail)"
     }
 }

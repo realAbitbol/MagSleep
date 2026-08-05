@@ -178,8 +178,13 @@ final class HelperManager {
     }
 
     func disable(completion: @escaping (Bool) -> Void) {
-        guard isLoaded else {
-            // Already not running; consider it disabled
+        // Send the request even when the daemon is currently dead (installed but
+        // not running): the request file survives in /tmp/magsleep and is picked
+        // up by `processRequestFile()` when the daemon (re)starts — otherwise
+        // the persisted config would keep `enabled=true` and the daemon would
+        // silently re-enable itself on its next launch.
+        guard isInstalled else {
+            // Nothing installed: nothing to disable.
             isEnabled = false
             completion(true)
             return
@@ -208,6 +213,13 @@ final class HelperManager {
 
     var launchesAtLogin: Bool {
         SMAppService.mainApp.status == .enabled
+    }
+
+    /// SMAppService.mainApp records the bundle path it was registered from, so
+    /// Launch at Login only works reliably when the app runs from /Applications
+    /// (a dev build in dist/ would pin the login item to a throwaway path).
+    var canManageLaunchAtLogin: Bool {
+        Bundle.main.bundlePath.hasPrefix("/Applications/")
     }
 
     func setLaunchesAtLogin(_ enabled: Bool) throws {
@@ -283,24 +295,64 @@ final class HelperManager {
         let command = scriptArgs
             .map { "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'" }
             .joined(separator: " ")
-        let escaped = "/bin/bash \(command)"
+        // Build the AppleScript source and hand it to /usr/bin/osascript as a
+        // single argv element. NSAppleScript is documented as not thread-safe
+        // (main-thread only), so running it on a background queue risks
+        // intermittent crashes; a separate osascript process is thread-safe and
+        // keeps the app responsive while the admin prompt is up.
+        let inner = "/bin/bash \(command)"
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        let source = "do shell script \"\(escaped)\" with administrator privileges"
+        let appleScript = "do shell script \"\(inner)\" with administrator privileges"
 
         DispatchQueue.global(qos: .userInitiated).async {
-            var errorInfo: NSDictionary?
-            let result = NSAppleScript(source: source)?.executeAndReturnError(&errorInfo)
-            DispatchQueue.main.async {
-                self.refresh()
-                if result == nil {
-                    let message = errorInfo?[NSAppleScript.errorMessage] as? String
-                    let code = errorInfo?[NSAppleScript.errorNumber] as? Int
-                    self.lastError = code == -128 ? nil : (message ?? "Helper script failed.")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", appleScript]
+            process.standardOutput = FileHandle.nullDevice
+            let errorPipe = Pipe()
+            process.standardError = errorPipe
+
+            // Drain stderr concurrently so a large error output can never
+            // deadlock the pipe while osascript is still writing.
+            var stderrData = Data()
+            let stderrQueue = DispatchQueue(label: "magsleep.osascript.stderr")
+            stderrQueue.async {
+                stderrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            }
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                // Guarantee EOF for the background reader (the process is gone,
+                // but our reference to the write end would otherwise keep the
+                // read blocked forever).
+                errorPipe.fileHandleForWriting.closeFile()
+                stderrQueue.sync {}
+                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+
+                DispatchQueue.main.async {
+                    self.refresh()
+                    if process.terminationStatus == 0 {
+                        self.lastError = nil
+                        completion(true)
+                    } else {
+                        // The user cancelling the auth prompt is not an error.
+                        let isCancel = stderr.localizedCaseInsensitiveContains("user canceled")
+                            || stderr.contains("-128")
+                        let message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                        self.lastError = isCancel
+                            ? nil
+                            : (message.isEmpty ? "Helper script failed." : message)
+                        completion(false)
+                    }
+                }
+            } catch {
+                // Unblock the stderr reader so it does not leak a thread.
+                errorPipe.fileHandleForWriting.closeFile()
+                DispatchQueue.main.async {
+                    self.lastError = "Could not run helper script: \(error.localizedDescription)"
                     completion(false)
-                } else {
-                    self.lastError = nil
-                    completion(true)
                 }
             }
         }

@@ -59,7 +59,7 @@ magsleep-helper (root LaunchDaemon)
 
 ## Development notes
 
-- Bundled but **unused** by the app: `scripts/disable-helper.sh`. `scripts/set-mode.sh` is not bundled (broken dead code — partial config + SIGHUP). `install-helper.sh`/`uninstall-helper.sh` are the only scripts invoked at runtime.
+- `install-helper.sh`/`uninstall-helper.sh` are the only scripts invoked at runtime. `disable-helper.sh` and `set-mode.sh` were removed: Disable is a request-file command (daemon stays loaded, `enabled=false`), and `set-mode.sh` was never bundled (broken dead code).
 - Config is re-read only at startup or when a request arrives. SIGINT/SIGTERM are handled via dispatch signal sources that restore the LED to macOS control and exit non-zero — launchd's `KeepAlive` (`SuccessfulExit: false`) then revives the daemon whenever it is killed, so the LED briefly returns to macOS control before the daemon re-applies the active mode. bootout during install/uninstall unloads the job and stops it permanently. The app checks daemon *process* liveness via `pgrep -x` (not `launchctl print`, which reports jobs that are registered but dead) with a 15s cache TTL, and re-enables the helper on launch only if it's installed **but not running** — a deliberately "Disabled" helper stays disabled.
 
 ## No tests

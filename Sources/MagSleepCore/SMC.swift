@@ -167,6 +167,89 @@ public enum SMC {
             _ = try call(connection, request)
         }
     }
+
+    /// A persistent SMC connection. Opens the AppleSMC service once and reuses
+    /// the connection for many reads/writes — the one-shot API above pays an
+    /// IOServiceGetMatchingService / IOServiceOpen / IOServiceClose round-trip
+    /// on every call, which matters for the daemon's recurring re-assert.
+    /// Key info is cached after the first lookup. Not thread-safe; call from a
+    /// single thread (the daemon only touches it from the main run loop).
+    public final class Connection {
+        private var connection: io_connect_t = 0
+        private let service: io_service_t
+        private var keyInfoCache: [String: UInt32] = [:]
+
+        public init() throws {
+            guard MemoryLayout<SMCParamStruct>.stride == 80 else {
+                throw SMCError.unexpectedLayout(MemoryLayout<SMCParamStruct>.stride)
+            }
+            let service = IOServiceGetMatchingService(
+                kIOMainPortDefault,
+                IOServiceMatching("AppleSMC")
+            )
+            guard service != 0 else { throw SMCError.serviceNotFound }
+            self.service = service
+            var conn: io_connect_t = 0
+            let kr = IOServiceOpen(service, mach_task_self_, 0, &conn)
+            guard kr == kIOReturnSuccess else {
+                IOObjectRelease(service)
+                throw SMCError.openFailed(kr)
+            }
+            self.connection = conn
+        }
+
+        deinit {
+            if connection != 0 {
+                IOServiceClose(connection)
+            }
+            IOObjectRelease(service)
+        }
+
+        public func readByte(_ key: String) throws -> UInt8 {
+            var request = SMCParamStruct()
+            request.key = fourCC(key)
+            request.data8 = kSMCReadKey
+            request.keyInfo.dataSize = try keyInfoSize(key)
+            let reply = try call(request)
+            return reply.bytes.0
+        }
+
+        public func writeByte(_ key: String, _ value: UInt8) throws {
+            var request = SMCParamStruct()
+            request.key = fourCC(key)
+            request.data8 = kSMCWriteKey
+            request.keyInfo.dataSize = try keyInfoSize(key)
+            request.bytes.0 = value
+            _ = try call(request)
+        }
+
+        private func keyInfoSize(_ key: String) throws -> UInt32 {
+            if let size = keyInfoCache[key] { return size }
+            var request = SMCParamStruct()
+            request.key = fourCC(key)
+            request.data8 = kSMCGetKeyInfo
+            let reply = try call(request)
+            keyInfoCache[key] = reply.keyInfo.dataSize
+            return reply.keyInfo.dataSize
+        }
+
+        private func call(_ input: SMCParamStruct) throws -> SMCParamStruct {
+            var input = input
+            var output = SMCParamStruct()
+            var outputSize = MemoryLayout<SMCParamStruct>.stride
+            let kr = IOConnectCallStructMethod(
+                connection,
+                kSMCHandleYPCEvent,
+                &input,
+                MemoryLayout<SMCParamStruct>.stride,
+                &output,
+                &outputSize
+            )
+            guard kr == kIOReturnSuccess else { throw SMCError.callFailed(kr) }
+            guard output.result == 0 else { throw SMCError.smcResult(output.result) }
+            return output
+        }
+    }
 }
 
 /// MagSafe LED control key on Apple Silicon MacBooks with MagSafe 3.
@@ -182,6 +265,11 @@ public enum MagSafeLED {
 
     public static func set(_ color: Color) throws {
         try SMC.writeByte(key, color.rawValue)
+    }
+
+    /// Writes the LED color over a persistent connection (no open/close churn).
+    public static func set(_ color: Color, using connection: SMC.Connection) throws {
+        try connection.writeByte(key, color.rawValue)
     }
 
     public static func current() throws -> Color? {

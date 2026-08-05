@@ -29,7 +29,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/MagSleep" "$APP/Contents/MacOS/MagSleep"
 cp "$BIN_DIR/magsleep-helper" "$APP/Contents/Resources/magsleep-helper"
 cp packaging/com.magsleep.helper.plist "$APP/Contents/Resources/"
-cp scripts/install-helper.sh scripts/disable-helper.sh scripts/uninstall-helper.sh \
+cp scripts/install-helper.sh scripts/uninstall-helper.sh \
     "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/Resources/"*.sh "$APP/Contents/Resources/magsleep-helper"
 
