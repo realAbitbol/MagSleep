@@ -13,6 +13,7 @@ launchctl bootout "system/$LABEL" 2>/dev/null || true
 [ -x "$BIN" ] && "$BIN" --reset || true
 
 rm -f "$BIN" "$PLIST"
+rm -f /var/run/magsleep.sock
 rm -rf "$LOG_DIR"
 rm -rf "$CONFIG_DIR"
 rm -rf /tmp/magsleep

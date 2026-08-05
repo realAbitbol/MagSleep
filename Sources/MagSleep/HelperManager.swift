@@ -9,17 +9,23 @@ final class HelperManager {
     private(set) var isLoaded = false
     private(set) var mode: OperationMode = .sleep
     private(set) var isEnabled = false
-    /// True while a privileged install/update script is running (admin prompt).
+    /// True while a privileged install/update script is running (admin prompt)
+    /// or while we are confirming the daemon came back up afterwards. Both
+    /// keep the menu-bar icon on the hourglass.
     private(set) var isInstalling = false
+    /// True while `confirmConnection` is polling the socket after an install.
+    private(set) var isConfirmingConnection = false
+    /// True after a post-install confirmation timed out (daemon unreachable).
+    private(set) var connectionFailed = false
     var lastError: String?
 
-    /// Cached result of launch daemon status check (nil = never checked).
-    private var cachedDaemonLoaded: Bool?
-    /// When the daemon liveness was last checked; used to age out the cache.
-    private var daemonCheckDate: Date?
-    /// Re-check daemon liveness at most this often, so a daemon that dies
-    /// mid-session is detected within one interval.
-    private let daemonCheckInterval: TimeInterval = 15
+    /// How often to re-probe the socket while confirming a fresh install.
+    private let connectionConfirmInterval: TimeInterval = 1.0
+    /// How long to wait for the daemon to come up before declaring failure.
+    private let connectionConfirmTimeout: TimeInterval = 15.0
+    /// How long a privileged helper script may run before it is force-killed
+    /// (a left-open admin prompt must never block a worker thread forever).
+    private let privilegedScriptTimeout: TimeInterval = 180
 
     init() {
         refresh()
@@ -30,41 +36,57 @@ final class HelperManager {
         isInstalled = fm.fileExists(atPath: MagSleep.helperPlistPath)
             && fm.fileExists(atPath: MagSleep.helperBinaryPath)
 
-        // Re-check daemon liveness when never checked or when the cached result
-        // has aged out, so a dead daemon is detected without spawning pgrep on
-        // every 5s refresh tick.
-        if isInstalled,
-           cachedDaemonLoaded == nil
-               || (daemonCheckDate.map { Date().timeIntervalSince($0) > daemonCheckInterval } ?? true) {
-            cachedDaemonLoaded = isLaunchDaemonLoaded()
-            daemonCheckDate = Date()
-        }
-        isLoaded = isInstalled && (cachedDaemonLoaded ?? false)
-
-        // Invalidate cache when daemon is not installed
-        if !isInstalled {
-            cachedDaemonLoaded = nil
-            daemonCheckDate = nil
+        // Cheap liveness probe: the daemon's unix socket only exists while it
+        // is listening, so a successful connect means it is actually running
+        // (no pgrep spawn, no caching).
+        isLoaded = isInstalled && HelperConnection.probe()
+        if isLoaded {
+            connectionFailed = false
         }
 
         // Reload mode and enabled state from config
         loadConfig()
     }
 
-    /// Mark the daemon status cache as stale. Call after operations that may change it.
-    func invalidateDaemonCache() {
-        cachedDaemonLoaded = nil
+    /// Same as `refresh()`, but performs the (potentially blocking) socket
+    /// probe off the main thread and delivers the updated state on the main
+    /// queue. Prefer this for periodic/timer-driven refreshes so a slow or
+    /// unresponsive daemon can never stall the UI.
+    func refreshAsync(completion: (() -> Void)? = nil) {
+        let fm = FileManager.default
+        isInstalled = fm.fileExists(atPath: MagSleep.helperPlistPath)
+            && fm.fileExists(atPath: MagSleep.helperBinaryPath)
+        guard isInstalled else {
+            isLoaded = false
+            connectionFailed = false
+            mode = .sleep
+            isEnabled = false
+            completion?()
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            let loaded = HelperConnection.probe()
+            DispatchQueue.main.async {
+                self.isLoaded = loaded
+                if loaded {
+                    self.connectionFailed = false
+                }
+                self.loadConfig()
+                completion?()
+            }
+        }
     }
 
     var statusTitle: String {
         if isInstalling {
-            return "Installing helper…"
+            return isConfirmingConnection ? "Connecting to helper…" : "Installing helper…"
         }
         if !isInstalled {
             return "Helper not installed"
         }
         if !isLoaded {
-            return "Helper not running"
+            return connectionFailed ? "Can't connect to helper" : "Helper not running"
         }
         if !isEnabled {
             return "Disabled"
@@ -114,17 +136,56 @@ final class HelperManager {
     }
 
     /// Installs or re-installs the helper with the current app version (needs admin).
+    /// Keeps `isInstalling` true through the post-install connection
+    /// confirmation so the UI shows the hourglass until the daemon answers.
     func install(completion: @escaping (Bool) -> Void) {
         isInstalling = true
         runPrivilegedScript(named: "install-helper.sh", args: [appVersion]) { [weak self] success in
-            self?.isInstalling = false
-            self?.invalidateDaemonCache()
-            self?.refresh()
-            completion(success)
+            guard let self else { return }
+            if success {
+                self.isConfirmingConnection = true
+                self.confirmConnection(completion: completion)
+            } else {
+                self.isInstalling = false
+                self.refresh()
+                completion(false)
+            }
         }
     }
 
-    // MARK: - Mode Management (via request file, no admin)
+    /// Polls the socket until the freshly installed daemon answers, or until
+    /// `connectionConfirmTimeout` elapses. Runs the probe off the main thread
+    /// (non-blocking connect) and hops back to main between attempts.
+    private func confirmConnection(completion: @escaping (Bool) -> Void) {
+        let start = Date()
+        func attempt() {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let reachable = HelperConnection.probe()
+                DispatchQueue.main.async {
+                    if reachable {
+                        self.isInstalling = false
+                        self.isConfirmingConnection = false
+                        self.refresh()
+                        completion(true)
+                    } else if Date().timeIntervalSince(start) >= self.connectionConfirmTimeout {
+                        self.isInstalling = false
+                        self.isConfirmingConnection = false
+                        self.connectionFailed = true
+                        self.lastError = "The helper was installed but could not be reached."
+                        self.refresh()
+                        completion(false)
+                    } else {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + self.connectionConfirmInterval) {
+                            attempt()
+                        }
+                    }
+                }
+            }
+        }
+        attempt()
+    }
+
+    // MARK: - Mode Management (via socket, no admin)
 
     func setMode(_ newMode: OperationMode, completion: @escaping (Bool) -> Void) {
         guard isLoaded else {
@@ -141,7 +202,7 @@ final class HelperManager {
         }
     }
 
-    // MARK: - Enable / Disable (via request file, no admin)
+    // MARK: - Enable / Disable (via socket, no admin)
 
     func enable(completion: @escaping (Bool) -> Void) {
         let version = appVersion
@@ -150,10 +211,15 @@ final class HelperManager {
             // Fall through to privileged install
             isInstalling = true
             runPrivilegedScript(named: "install-helper.sh", args: [version]) { [weak self] success in
-                self?.isInstalling = false
-                self?.invalidateDaemonCache()
-                self?.refresh()
-                completion(success)
+                guard let self else { return }
+                if success {
+                    self.isConfirmingConnection = true
+                    self.confirmConnection(completion: completion)
+                } else {
+                    self.isInstalling = false
+                    self.refresh()
+                    completion(false)
+                }
             }
             return
         }
@@ -162,10 +228,15 @@ final class HelperManager {
         guard isLoaded else {
             isInstalling = true
             runPrivilegedScript(named: "install-helper.sh", args: [version]) { [weak self] success in
-                self?.isInstalling = false
-                self?.invalidateDaemonCache()
-                self?.refresh()
-                completion(success)
+                guard let self else { return }
+                if success {
+                    self.isConfirmingConnection = true
+                    self.confirmConnection(completion: completion)
+                } else {
+                    self.isInstalling = false
+                    self.refresh()
+                    completion(false)
+                }
             }
             return
         }
@@ -178,11 +249,8 @@ final class HelperManager {
     }
 
     func disable(completion: @escaping (Bool) -> Void) {
-        // Send the request even when the daemon is currently dead (installed but
-        // not running): the request file survives in /tmp/magsleep and is picked
-        // up by `processRequestFile()` when the daemon (re)starts — otherwise
-        // the persisted config would keep `enabled=true` and the daemon would
-        // silently re-enable itself on its next launch.
+        // Requires a live daemon (socket ack). If the daemon is dead the LED is
+        // already unmanaged; the app's launch-time recovery re-bootstraps it.
         guard isInstalled else {
             // Nothing installed: nothing to disable.
             isEnabled = false
@@ -203,7 +271,6 @@ final class HelperManager {
             if success {
                 try? SMAppService.mainApp.unregister()
             }
-            self?.invalidateDaemonCache()
             self?.refresh()
             completion(success)
         }
@@ -230,52 +297,32 @@ final class HelperManager {
         }
     }
 
-    // MARK: - Request File Communication
+    // MARK: - Socket Communication
 
-    /// Send a command to the helper daemon via the request file.
+    /// Sends a command to the helper daemon over the unix socket and awaits its
+    /// acknowledgment, so success reflects what actually happened (no more
+    /// optimistic reporting).
     private func sendRequest(_ command: String, completion: @escaping (Bool) -> Void) {
-        do {
-            // Ensure the request directory exists (it may be absent if the
-            // helper was just uninstalled or /tmp was cleaned).
-            try FileManager.default.createDirectory(
-                atPath: MagSleep.requestDirectory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o777]
-            )
-            try command.write(
-                toFile: MagSleep.requestFilePath,
-                atomically: true,
-                encoding: .utf8
-            )
-            // Request sent; daemon picks it up immediately via its directory watch.
-            // Optimistically assume success; daemon will apply it.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                completion(true)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let response = try HelperConnection.send(command)
+                DispatchQueue.main.async {
+                    if response.ok {
+                        self.lastError = nil
+                        completion(true)
+                    } else {
+                        self.lastError = response.error ?? "Helper rejected the request"
+                        completion(false)
+                    }
+                }
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? "Could not communicate with helper"
+                DispatchQueue.main.async {
+                    self.lastError = message
+                    completion(false)
+                }
             }
-        } catch {
-            lastError = "Could not communicate with helper: \(error.localizedDescription)"
-            completion(false)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func isLaunchDaemonLoaded() -> Bool {
-        // `launchctl print` exits 0 whenever the job is *registered* with
-        // launchd — even if the process has exited (e.g. after `launchctl kill`
-        // or a crash). Check the process is actually alive instead, so the app
-        // can detect a dead helper and restart it.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-x", MagSleep.helperLabel]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            return false
         }
     }
 
@@ -287,6 +334,9 @@ final class HelperManager {
         guard let scriptPath = Bundle.main.path(forResource: scriptName, ofType: nil),
               let resourcePath = Bundle.main.resourcePath else {
             lastError = "Helper resources missing; run the built MagSleep.app bundle."
+            // Defensive: callers reset this on failure, but never leave the
+            // UI stuck on the hourglass if a future caller forgets.
+            isInstalling = false
             completion(false)
             return
         }
@@ -321,9 +371,21 @@ final class HelperManager {
                 stderrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
             }
 
+            // Bounded wait instead of waitUntilExit(): a left-open admin
+            // prompt must never block this worker thread forever. The
+            // termination handler is armed before run() so its signal can
+            // never be missed.
+            let finished = DispatchSemaphore(value: 0)
+            process.terminationHandler = { _ in finished.signal() }
+
             do {
                 try process.run()
-                process.waitUntilExit()
+                var timedOut = false
+                if finished.wait(timeout: .now() + self.privilegedScriptTimeout) == .timedOut {
+                    timedOut = true
+                    process.terminate()
+                    finished.wait() // the termination handler fires after terminate()
+                }
                 // Guarantee EOF for the background reader (the process is gone,
                 // but our reference to the write end would otherwise keep the
                 // read blocked forever).
@@ -340,7 +402,12 @@ final class HelperManager {
                         // The user cancelling the auth prompt is not an error.
                         let isCancel = stderr.localizedCaseInsensitiveContains("user canceled")
                             || stderr.contains("-128")
-                        let message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let message: String
+                        if timedOut {
+                            message = "The helper script timed out."
+                        } else {
+                            message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
                         self.lastError = isCancel
                             ? nil
                             : (message.isEmpty ? "Helper script failed." : message)
@@ -351,6 +418,7 @@ final class HelperManager {
                 // Unblock the stderr reader so it does not leak a thread.
                 errorPipe.fileHandleForWriting.closeFile()
                 DispatchQueue.main.async {
+                    self.isInstalling = false
                     self.lastError = "Could not run helper script: \(error.localizedDescription)"
                     completion(false)
                 }

@@ -129,7 +129,7 @@ public enum SMC {
         }
     }
 
-    public static func readBytes(_ key: String) throws -> [UInt8] {
+    public static func readByte(_ key: String) throws -> UInt8 {
         try withConnection { connection in
             var info = SMCParamStruct()
             info.key = fourCC(key)
@@ -141,14 +141,8 @@ public enum SMC {
             request.data8 = kSMCReadKey
             request.keyInfo.dataSize = infoReply.keyInfo.dataSize
             let reply = try call(connection, request)
-            return withUnsafeBytes(of: reply.bytes) {
-                Array($0.prefix(Int(infoReply.keyInfo.dataSize)))
-            }
+            return reply.bytes.0
         }
-    }
-
-    public static func readByte(_ key: String) throws -> UInt8 {
-        try readBytes(key).first ?? 0
     }
 
     /// Writes a single-byte SMC key. Requires root.
@@ -203,15 +197,6 @@ public enum SMC {
                 IOServiceClose(connection)
             }
             IOObjectRelease(service)
-        }
-
-        public func readByte(_ key: String) throws -> UInt8 {
-            var request = SMCParamStruct()
-            request.key = fourCC(key)
-            request.data8 = kSMCReadKey
-            request.keyInfo.dataSize = try keyInfoSize(key)
-            let reply = try call(request)
-            return reply.bytes.0
         }
 
         public func writeByte(_ key: String, _ value: UInt8) throws {

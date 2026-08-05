@@ -35,9 +35,55 @@ Intel Macs are not supported.
 4. Click the menu bar icon and choose **Sleep Mode** (or **Always Off**) — this installs the helper and asks for your admin password once.
 
 > [!IMPORTANT]
-> The app isn't notarized, so if Gatekeeper blocks the unsigned build you can:
-> - Right-click the app → **Open**. (unlikely to work on Tahoe)
-> - If that fails, open the terminal and run `xattr -dr com.apple.quarantine /Applications/MagSleep.app`
+> MagSleep is **ad-hoc signed, not notarized** (notarization requires a paid Apple Developer Program membership). macOS therefore quarantines the downloaded app, and Gatekeeper may block the first launch. This is expected — unblock it with one of the methods below. See [Notarization & distribution](#notarization--distribution).
+
+#### If Gatekeeper blocks the app or the DMG
+
+When you first try to open a downloaded MagSleep, macOS may show one of these dialogs:
+
+- *"MagSleep cannot be opened because the developer cannot be verified."*
+- *"MagSleep cannot be opened because it is not from an identified developer."*
+- *"MagSleep-1.0.X.dmg cannot be opened because it was not downloaded from the App Store."*
+
+Try these in order — stop as soon as one works:
+
+**Method A — right-click → Open (easiest)**
+1. Open **Finder** and go to **Applications**.
+2. **Right-click** (or Control-click) **MagSleep**, then choose **Open**.
+3. Click **Open** in the confirmation dialog.
+4. MagSleep launches and is allowed to open from then on.
+
+**Method B — System Settings → Open Anyway**
+1. After a first blocked attempt, open **System Settings → Privacy & Security**.
+2. Scroll down to the **Security** section.
+3. Next to *"MagSleep was blocked from use…"* click **Open Anyway** and confirm with Touch ID or your password.
+
+**Method C — the DMG itself won't open**
+If the error happens while opening the DMG, unblock the DMG file first, then open it again:
+
+```bash
+xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.0.9.dmg
+```
+
+**Method D — remove the quarantine flag (most reliable)**
+If the app was already copied into Applications, remove the quarantine flag directly:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MagSleep.app
+```
+
+Then launch MagSleep normally. To confirm it's unblocked:
+
+```bash
+xattr -l /Applications/MagSleep.app | grep quarantine
+```
+
+No output means the flag is gone and Gatekeeper will no longer block it.
+
+> [!NOTE]
+> - Updating to a newer DMG re-quarantines the app, so you may need to repeat Method D after each update.
+> - Removing the quarantine flag is safe: MagSleep is open source and built locally from this repository.
+> - Gatekeeper exceptions work best when the app lives in `/Applications`. If it still won't open, move it there and retry Method A or B.
 
 ### From source
 
@@ -49,6 +95,12 @@ make install VERSION=1.0.5  # copy to /Applications
 # or
 make dmg VERSION=1.0.5    # dist/MagSleep-1.0.5.dmg
 ```
+
+## Notarization & distribution
+
+MagSleep is **ad-hoc signed**, not notarized: notarization requires an Apple Developer Program membership (paid, \$99/yr) and a Developer ID certificate. Because of this, DMGs downloaded from the internet may be blocked by Gatekeeper — prefer building from source (`make app` + `make install`), which produces a locally-built app with no quarantine flag.
+
+If you ever join the Apple Developer Program, `make notarize` signs with your Developer ID certificate, submits for notarization, and staples the ticket. Without a certificate it prints guidance and exits 0.
 
 ## First-time setup
 
@@ -66,6 +118,8 @@ After that, sleep and wake are handled automatically even if you quit the menu b
 | **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
 | **Disabled** | Hand the LED back to macOS entirely |
 | **Launch at Login** | Start MagSleep when you log in |
+| **Check for Updates…** | Check GitHub Releases for a newer MagSleep |
+| **Copy Diagnostics…** | Copy a support-ready status block to the clipboard |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
 | **Uninstall MagSleep…** | Full cleanup, then quit |
 | **About MagSleep…** | App and helper version info |
@@ -78,7 +132,7 @@ Mac goes to sleep  →  helper writes ACLC = 1  →  MagSafe LED off
 Mac wakes up       →  helper writes ACLC = 0  →  macOS controls the LED again
 ```
 
-MagSleep is a lightweight AppKit menu bar app plus a privileged LaunchDaemon. The daemon is fully event-driven: it watches the request directory (`/tmp/magsleep/`) for mode changes, listens for system power events (`IORegisterForSystemPower`), and reacts to power-source changes (`IOPS`) so **Always Off** stays off even when you plug in or unplug the charger. It writes the MagSafe LED SMC key `ACLC`; root is required for SMC writes, which is why the first mode selection asks for your password once.
+MagSleep is a lightweight AppKit menu bar app plus a privileged LaunchDaemon. The daemon is fully event-driven: it serves app requests over a unix socket (`/var/run/magsleep.sock`, request/ack, no polling), listens for system power events (`IORegisterForSystemPower`), and reacts to power-source changes (`IOPS`) so **Always Off** stays off even when you plug in or unplug the charger. It writes the MagSafe LED SMC key `ACLC`; root is required for SMC writes, which is why the first mode selection asks for your password once.
 
 | `ACLC` | Meaning |
 |--------|---------|

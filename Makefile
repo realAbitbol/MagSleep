@@ -1,8 +1,8 @@
-VERSION ?= 1.0.0
+VERSION ?= 1.0.10
 
 APP = dist/MagSleep.app
 
-.PHONY: app dmg install run clean
+.PHONY: app dmg install run clean test notarize release
 
 app:
 	scripts/build-app.sh $(VERSION)
@@ -27,3 +27,18 @@ $(APP):
 
 clean:
 	rm -rf .build dist
+
+test:
+	swift test
+
+# Notarizes dist/MagSleep.app — requires a Developer ID cert (paid membership).
+# Without one it prints guidance and exits 0.
+notarize: $(APP)
+	scripts/notarize.sh
+
+# Creates a tagged release: tests, builds the DMG, updates README/Makefile
+# version references, commits, tags vX.Y.Z, pushes branch + tag, and publishes
+# the GitHub Release with the DMG (requires `gh` authenticated). See
+# scripts/release.sh.
+release:
+	scripts/release.sh $(VERSION)

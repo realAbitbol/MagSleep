@@ -1,9 +1,16 @@
 import AppKit
+import Darwin
 import MagSleepCore
 
 @main
 enum MagSleepMain {
     static func main() {
+        // The helper's socket can be closed by the daemon at any moment
+        // (restart, rebind, /var/run cleanup); without this a write would
+        // raise SIGPIPE and kill the app instead of surfacing as a failed
+        // request.
+        signal(SIGPIPE, SIG_IGN)
+
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let delegate = AppDelegate()

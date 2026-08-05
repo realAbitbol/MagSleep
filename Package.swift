@@ -24,5 +24,10 @@ let package = Package(
             dependencies: ["MagSleepCore"],
             path: "Sources/MagSleepHelper"
         ),
+        .testTarget(
+            name: "MagSleepCoreTests",
+            dependencies: ["MagSleepCore"],
+            path: "Tests/MagSleepCoreTests"
+        ),
     ]
 )

@@ -4,14 +4,15 @@ import IOKit.pwr_mgt
 import IOKit.ps
 import MagSleepCore
 import os.log
+import SystemConfiguration
 
 /// magsleep-helper: privileged daemon that controls the MagSafe LED.
 /// Runs as root via LaunchDaemon.
 ///
 /// Behavior:
 /// - Turns the MagSafe LED off when the Mac sleeps, restores macOS control on wake
-/// - Watches the request directory for commands from the app (event-driven,
-///   no polling): mode changes apply within milliseconds
+/// - Serves app requests over a unix-domain socket (`MagSleep.socketPath`):
+///   one connection per request, request/ack/error, no polling
 /// - Re-asserts the active mode on power-source changes (covers alwaysOff
 ///   across plug-in / charging-state updates)
 /// - Honors config.enabled: when false, LED is under macOS control, events ignored
@@ -32,14 +33,12 @@ final class PowerDaemon {
     private let log = Logger(subsystem: "com.magsleep.helper", category: "daemon")
     private var config = DaemonConfig.default
     private var isSleeping = false
-    private var requestFileLastModified: TimeInterval = 0
 
     private var rootPort: io_connect_t = 0
     private var notificationPort: IONotificationPortRef?
     private var notifierObject: io_object_t = 0
     private var signalSources: [DispatchSourceSignal] = []
-    private var requestDirSource: DispatchSourceFileSystemObject?
-    private var requestDirFD: Int32 = -1
+    private var socketServer: SocketServer?
     private var powerSourceSource: CFRunLoopSource?
     private var reassertTimer: Timer?
     /// Persistent SMC connection (opened lazily on first apply; retried on failure).
@@ -50,11 +49,13 @@ final class PowerDaemon {
     func run() {
         log.info("starting")
 
-        // Ensure config and request directories exist
-        ensureConfigDirectory()
-        ensureRequestDirectory()
+        // A client can disconnect while we are writing our response; without
+        // this, SIGPIPE would take the daemon down (launchd would revive it,
+        // but the LED would flicker on every occurrence).
+        signal(SIGPIPE, SIG_IGN)
 
-        // Load config (or fall back to defaults)
+        // Ensure the config directory exists and load the config (or defaults)
+        ensureConfigDirectory()
         loadConfig()
 
         // Seed the sleep state for the rare case where we're revived (launchd
@@ -62,27 +63,33 @@ final class PowerDaemon {
         // accurate afterwards.
         isSleeping = isSystemSleeping()
 
-        // Set up signal handlers and system power notifications
+        // Set up signal handlers, system power notifications, and the request
+        // socket (app → daemon IPC, one connection per request).
         setupSignalHandlers()
         registerForPowerNotifications()
-
-        // Watch the request directory and power source changes (event-driven)
-        armRequestDirectoryWatch()
+        startSocketServer()
         registerForPowerSourceChanges()
-
-        // Process any request written before we started watching
-        processRequestFile()
 
         // Slow re-assert timer: guarantees the LED converges back to the active
         // mode within a few seconds even if macOS changes it after our
         // event-driven writes (e.g. plug/unplug flips the LED to show charging).
         // A single-byte SMC write every 3s is negligible; mode-change latency is
-        // unaffected (requests are still applied instantly via the directory
-        // watch).
+        // unaffected (requests are still applied instantly via the socket).
         startReassertTimer()
 
         // Run the run loop; all events fire here.
         RunLoop.main.run()
+    }
+
+    private func startSocketServer() {
+        let server = SocketServer(path: MagSleep.socketPath) { [weak self] line, peerUID in
+            self?.handleSocketRequest(line, peerUID: peerUID) ?? ""
+        }
+        if server.start() {
+            socketServer = server
+        } else {
+            log.error("failed to start socket server")
+        }
     }
 
     // MARK: - Config
@@ -98,31 +105,11 @@ final class PowerDaemon {
         }
     }
 
-    private func ensureRequestDirectory() {
-        // World-writable so the user-space app can write requests without admin.
-        try? FileManager.default.createDirectory(
-            atPath: MagSleep.requestDirectory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o777]
-        )
-    }
-
     private func loadConfig() {
         let url = URL(fileURLWithPath: MagSleep.configFilePath)
-        var loaded = DaemonConfig.default
         let exists = FileManager.default.fileExists(atPath: url.path)
 
-        if exists {
-            do {
-                let data = try Data(contentsOf: url)
-                loaded = try PropertyListDecoder().decode(DaemonConfig.self, from: data)
-            } catch {
-                log.error("failed to load config: \(error)")
-                loaded = DaemonConfig.default
-            }
-        }
-
-        config = loaded
+        config = DaemonConfig.load(from: url)
         log.info("config loaded: mode=\(self.config.mode.rawValue), enabled=\(self.config.enabled)")
 
         // Persist the initial state so the app (which runs as a user) can read
@@ -155,117 +142,39 @@ final class PowerDaemon {
         }
     }
 
-    // MARK: - Request File (event-driven via directory watch)
+    // MARK: - Socket Requests (app → daemon IPC)
 
-    private func armRequestDirectoryWatch() {
-        requestDirSource?.cancel()
-        let fd = open(MagSleep.requestDirectory, O_EVTONLY)
-        guard fd >= 0 else {
-            log.error("cannot watch request directory (errno \(errno))")
-            return
+    private func handleSocketRequest(_ line: String, peerUID: uid_t?) -> String {
+        guard let request = SocketRequest.parseLine(line) else {
+            return SocketResponse(id: "", ok: false, config: nil, error: "malformed request").encodeLine()
         }
-        requestDirFD = fd
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .rename, .delete, .extend],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in
-            guard let self else { return }
-            // If /tmp/magsleep was deleted and recreated out from under us, the
-            // old fd watches an unlinked inode and would never fire again —
-            // requests would be silently dropped. Re-arm against the live path.
-            self.rearmIfWatchStale()
-            self.processRequestFile()
-            // The app writes the request atomically (temp file + rename). If the
-            // watch fires before the rename completes we may read an empty file;
-            // re-check shortly after so the request is not silently dropped.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self.processRequestFile()
+        if let peerUID, !isAllowedPeer(peerUID) {
+            log.error("rejected request from uid \(peerUID, privacy: .public)")
+            return SocketResponse(id: request.id, ok: false, config: nil, error: "unauthorized").encodeLine()
+        }
+        log.info("processing request: \(request.cmd, privacy: .public)")
+        if config.apply(request.cmd) {
+            saveConfig(config)
+            applyMode()
+            if !config.enabled {
+                log.info("disabled, LED under macOS control")
             }
+            return SocketResponse(id: request.id, ok: true, config: config, error: nil).encodeLine()
         }
-        source.setCancelHandler { [weak self] in
-            close(fd)
-            if self?.requestDirFD == fd {
-                self?.requestDirFD = -1
-            }
-        }
-        source.resume()
-        requestDirSource = source
-        log.info("watching request directory")
+        log.error("unknown request: \(request.cmd, privacy: .public)")
+        return SocketResponse(id: request.id, ok: false, config: nil, error: "unknown command").encodeLine()
     }
 
-    /// Re-arms the directory watch when the watched inode no longer matches the
-    /// live path (directory deleted and recreated, e.g. /tmp cleaned by a
-    /// third-party tool). Also recreates a missing directory so the app's next
-    /// request lands somewhere we are watching.
-    private func rearmIfWatchStale() {
-        var watched = stat()
-        if fstat(requestDirFD, &watched) != 0 {
-            armRequestDirectoryWatch()
-            return
-        }
-        var current = stat()
-        if stat(MagSleep.requestDirectory, &current) != 0 {
-            ensureRequestDirectory()
-            armRequestDirectoryWatch()
-            return
-        }
-        if current.st_dev != watched.st_dev || current.st_ino != watched.st_ino {
-            armRequestDirectoryWatch()
-        }
-    }
-
-    private func processRequestFile() {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: MagSleep.requestFilePath) else {
-            return
-        }
-
-        guard let mtime = attributes[.modificationDate] as? Date,
-              mtime.timeIntervalSince1970 > requestFileLastModified else {
-            return
-        }
-
-        guard let command = try? String(contentsOfFile: MagSleep.requestFilePath, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !command.isEmpty else {
-            return
-        }
-
-        log.info("processing request: \(command)")
-        requestFileLastModified = mtime.timeIntervalSince1970
-
-        switch command {
-        case "mode:sleep":
-            config.mode = .sleep
-            config.enabled = true
-            saveConfig(config)
-            applyMode()
-        case "mode:alwaysOff":
-            config.mode = .alwaysOff
-            config.enabled = true
-            saveConfig(config)
-            applyMode()
-        case "enable":
-            config.enabled = true
-            saveConfig(config)
-            applyMode()
-        case "disable":
-            config.enabled = false
-            saveConfig(config)
-            applyMode()
-            log.info("disabled, LED under macOS control")
-        default:
-            log.error("unknown request: \(command)")
-        }
-
-        // Remove the request file only if it hasn't been replaced since we read
-        // it — otherwise we'd delete a newer request before it was processed.
-        if let current = try? FileManager.default.attributesOfItem(atPath: MagSleep.requestFilePath),
-           let currentMtime = current[.modificationDate] as? Date,
-           currentMtime.timeIntervalSince1970 == mtime.timeIntervalSince1970 {
-            try? FileManager.default.removeItem(atPath: MagSleep.requestFilePath)
-        }
+    /// Accepts requests from root and from the current console user only.
+    /// Falls back to allowing when the console user cannot be determined (the
+    /// same exposure the legacy world-writable request file had).
+    private func isAllowedPeer(_ peerUID: uid_t) -> Bool {
+        if peerUID == 0 { return true }
+        var consoleUID: uid_t = 0
+        var consoleGID: gid_t = 0
+        let consoleUser: CFString? = SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID)
+        guard consoleUser != nil else { return true }
+        return peerUID == consoleUID
     }
 
     // MARK: - Mode Application
@@ -287,17 +196,7 @@ final class PowerDaemon {
             }
         }
 
-        let target: MagSafeLED.Color
-        if !config.enabled {
-            target = .system
-        } else {
-            switch config.mode {
-            case .sleep:
-                target = isSleeping ? .off : .system
-            case .alwaysOff:
-                target = .off
-            }
-        }
+        let target = LEDTarget.color(for: config, isSleeping: isSleeping)
 
         do {
             try MagSafeLED.set(target, using: smc)
@@ -415,6 +314,7 @@ final class PowerDaemon {
     /// code, so those flows still stop it permanently.
     private func shutdown() {
         log.info("shutting down, restoring LED to macOS control")
+        socketServer?.stop()
         try? MagSafeLED.set(.system)
         exit(1)
     }
@@ -424,6 +324,8 @@ final class PowerDaemon {
     private func startReassertTimer() {
         let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
             self?.reassertActiveMode()
+            // Cheap stat; rebinds the socket if /var/run was cleaned out.
+            self?.socketServer?.ensureSocketFileExists()
         }
         RunLoop.main.add(timer, forMode: .default)
         reassertTimer = timer
@@ -435,6 +337,12 @@ final class PowerDaemon {
     /// request. This keeps SMC traffic at zero when MagSleep is off.
     private func reassertActiveMode() {
         guard config.enabled else { return }
+        // While awake in Sleep Mode the LED is already under macOS control
+        // (the target is .system); re-writing it every tick is pure SMC churn
+        // (~28,800 writes/day). Only Always Off needs the watchdog (macOS
+        // flips the LED on plug/unplug), plus the window while the Mac is
+        // asleep in Sleep Mode.
+        if config.mode == .sleep && !isSleeping { return }
         applyMode()
     }
 
@@ -443,16 +351,32 @@ final class PowerDaemon {
     /// Heuristic used once at startup to seed `isSleeping` (covers the case
     /// where launchd revives us while the Mac is still asleep). Not used for
     /// ongoing detection — that comes from IORegisterForSystemPower events.
+    /// Cross-checked against the live power state to avoid the false positive
+    /// of a revive shortly after wake (LED forced off while the Mac is awake).
     private func isSystemSleeping() -> Bool {
         let sleepFile = "/private/var/vm/sleepimage"
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: sleepFile) else {
-            return false
-        }
-        guard let mtime = attributes[.modificationDate] as? Date else {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: sleepFile),
+              let mtime = attributes[.modificationDate] as? Date else {
             return false
         }
         // If sleepimage was modified recently (within last 30 seconds), consider system sleeping
-        return Date().timeIntervalSince(mtime) < 30
+        let heuristic = Date().timeIntervalSince(mtime) < 30
+        return currentSystemPowerState() ?? heuristic
+    }
+
+    /// Reads the current system power state from the dynamic store. Returns
+    /// `true` when the system is asleep, `false` when awake, and `nil` when
+    /// the state cannot be determined (so callers fall back to their own
+    /// heuristic).
+    private func currentSystemPowerState() -> Bool? {
+        let key = "State:/IOKit/PowerManagement/CurrentSystemPower" as CFString
+        guard let store = SCDynamicStoreCreate(nil, "com.magsleep.helper.power" as CFString, nil, nil),
+              let value = SCDynamicStoreCopyValue(store, key),
+              let dict = value as? [String: Any],
+              let asleep = dict["System Sleep"] as? Bool else {
+            return nil
+        }
+        return asleep
     }
 }
 

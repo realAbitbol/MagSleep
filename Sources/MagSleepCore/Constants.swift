@@ -4,27 +4,23 @@ public enum MagSleep {
     public static let helperLabel = "com.magsleep.helper"
     public static let helperBinaryPath = "/Library/PrivilegedHelperTools/\(helperLabel)"
     public static let helperPlistPath = "/Library/LaunchDaemons/\(helperLabel).plist"
-    public static let logDirectory = "/Library/Logs/MagSleep"
     public static let coffeeURL = URL(string: "https://ko-fi.com/realabitbol")!
-    public static let bundledHelperName = "magsleep-helper"
 
     /// Directory and file used to store persistent configuration (mode, etc.).
     /// Owned by root; read by the helper daemon, written by the helper daemon.
     public static let configDirectory = "/Library/Preferences/MagSleep"
     public static let configFilePath = "\(configDirectory)/config.plist"
 
-    /// Request file: app writes commands (mode change, enable, disable) here;
-    /// the daemon watches the directory and processes requests immediately.
-    /// No admin needed.
-    public static let requestDirectory = "/tmp/magsleep"
-    public static let requestFilePath = "\(requestDirectory)/request"
+    /// Unix-domain socket used for app → daemon IPC (request + ack + errors).
+    /// Created by the daemon (root); the app connects as the console user.
+    public static let socketPath = "/var/run/magsleep.sock"
 
     /// File storing the app version of the currently installed helper.
     public static let helperVersionFilePath = "\(configDirectory)/helper-version.txt"
 }
 
 /// Operation modes for MagSleep (user's preferred active mode).
-public enum OperationMode: String, Codable {
+public enum OperationMode: String, Codable, Equatable {
     /// Turn LED off on sleep, restore to macOS on wake.
     case sleep
 
@@ -33,7 +29,7 @@ public enum OperationMode: String, Codable {
 }
 
 /// Configuration structure shared between the app and the helper daemon.
-public struct DaemonConfig: Codable {
+public struct DaemonConfig: Codable, Equatable {
     public var mode: OperationMode
     public var enabled: Bool
 
