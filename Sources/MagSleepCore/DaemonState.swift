@@ -1,11 +1,13 @@
 import Foundation
 
 /// Commands the app can send to the daemon (via the socket protocol).
-public enum RequestCommand {
-    public static let modeSleep = "mode:sleep"
-    public static let modeAlwaysOff = "mode:alwaysOff"
-    public static let enable = "enable"
-    public static let disable = "disable"
+/// Internal: only used by `DaemonConfig.apply` within this module (tests reach
+/// it via `@testable`).
+enum RequestCommand {
+    static let modeSleep = "mode:sleep"
+    static let modeAlwaysOff = "mode:alwaysOff"
+    static let enable = "enable"
+    static let disable = "disable"
 }
 
 extension DaemonConfig {

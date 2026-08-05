@@ -36,9 +36,20 @@ let cx2 = cutoutRect.midX, cy2 = cutoutRect.midY, r2 = cutoutRect.width / 2
 ctx.saveGState()
 let glowColor1 = CGColor(red: 0.45, green: 0.55, blue: 0.85, alpha: 0.12)
 let glowColor2 = CGColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 0.0)
-if let glowGradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [glowColor1, glowColor2] as CFArray, locations: nil) {
+if let glowGradient = CGGradient(
+    colorsSpace: CGColorSpaceCreateDeviceRGB(),
+    colors: [glowColor1, glowColor2] as CFArray,
+    locations: nil
+) {
     // Start radius is 0 so it fades smoothly outward from the center
-    ctx.drawRadialGradient(glowGradient, startCenter: moonCenter, startRadius: 0, endCenter: moonCenter, endRadius: moonRadius * 2.5, options: [])
+    ctx.drawRadialGradient(
+        glowGradient,
+        startCenter: moonCenter,
+        startRadius: 0,
+        endCenter: moonCenter,
+        endRadius: moonRadius * 2.5,
+        options: []
+    )
 }
 ctx.restoreGState()
 
@@ -87,5 +98,10 @@ image.unlockFocus()
 guard let tiff = image.tiffRepresentation,
       let rep = NSBitmapImageRep(data: tiff),
       let png = rep.representation(using: .png, properties: [:]) else { exit(1) }
-try! png.write(to: URL(fileURLWithPath: outputPath))
+do {
+    try png.write(to: URL(fileURLWithPath: outputPath))
+} catch {
+    fputs("error: could not write \(outputPath): \(error)\n", stderr)
+    exit(1)
+}
 print("wrote \(outputPath)")

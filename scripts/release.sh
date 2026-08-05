@@ -56,11 +56,29 @@ sed -i '' -E \
 # Makefile default so plain `make app`/`make dmg` build the new version
 sed -i '' -E "s/^VERSION \?= .*/VERSION ?= $VERSION/" Makefile
 
+# 3.4. Release notes from CHANGELOG.md ---------------------------------------
+# The "[VERSION]" section of CHANGELOG.md is used for the GitHub release body
+# AND embedded in the Sparkle appcast (shown in the in-app update window).
+# Falls back to a generic message if the section is missing or empty.
+NOTES=""
+if [ -f CHANGELOG.md ]; then
+    NOTES="$(awk -v hdr="## [$VERSION]" '
+        index($0, hdr) == 1 { in_section = 1; next }
+        in_section && substr($0, 1, 3) == "## " { exit }
+        in_section
+    ' CHANGELOG.md)"
+fi
+if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+    echo "warning: no CHANGELOG.md section found for [$VERSION]; using a generic release note" >&2
+    NOTES="MagSleep $VERSION — see the README for installation instructions."
+fi
+
 # 3.5. Sparkle update archive + appcast --------------------------------------
 # The ZIP is what Sparkle downloads for in-app updates; the DMG stays for
 # human installs. The appcast (committed at appcast/appcast.xml, served from
 # GitHub raw) is regenerated with the new entry, EdDSA-signed from the login
 # keychain (generate_keys), and the enclosure URL pointed at the release asset.
+# The release notes are embedded so the Sparkle update window shows them.
 if [ -x "$GENERATE_APPCAST" ]; then
     APPCAST_STAGE="dist/appcast-staging"
     mkdir -p "$APPCAST_STAGE"
@@ -69,7 +87,9 @@ if [ -x "$GENERATE_APPCAST" ]; then
     fi
     ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
     cp "$ZIP" "$APPCAST_STAGE/"
-    ( cd "$APPCAST_STAGE" && "$GENERATE_APPCAST" . )
+    # Same base name as the archive → Sparkle uses it as this item's notes.
+    printf '%s\n' "$NOTES" > "$APPCAST_STAGE/MagSleep-$VERSION.md"
+    ( cd "$APPCAST_STAGE" && "$GENERATE_APPCAST" --embed-release-notes . )
     sed -i '' -E "s|url=\"MagSleep-$VERSION\.zip\"|url=\"https://github.com/realAbitbol/MagSleep/releases/download/$TAG/MagSleep-$VERSION.zip\"|" "$APPCAST_STAGE/appcast.xml"
     mkdir -p appcast
     cp "$APPCAST_STAGE/appcast.xml" appcast/appcast.xml
@@ -94,7 +114,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     gh release create "$TAG" "$DMG" "$ZIP" \
         --repo realAbitbol/MagSleep \
         --title "MagSleep $VERSION" \
-        --notes "MagSleep $VERSION — see the README for installation instructions."
+        --notes "$NOTES"
     echo "published GitHub release: https://github.com/realAbitbol/MagSleep/releases/tag/$TAG"
 else
     echo "warning: gh not available/authenticated — tag pushed, create the GitHub Release manually" >&2

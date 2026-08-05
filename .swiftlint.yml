@@ -1,0 +1,68 @@
+# SwiftLint configuration for MagSleep.
+# Only our own sources are linted; dependencies and build artifacts are excluded.
+
+excluded:
+  - .build
+  - dist
+
+# Short identifiers in low-level socket/SMC code and geometry math are
+# idiomatic; keep them allowed rather than renaming POSIX-style variables.
+identifier_name:
+  excluded:
+    - id
+    - ok
+    - fd
+    - kr
+    - rc
+    - fm
+    - sa
+    - st
+    - n
+    - r
+    - t
+    - i
+    - j
+    - a
+    - b
+    - d
+    - h
+    - x
+    - y
+    - z
+    - dx
+    - dy
+    - px
+    - py
+    - ox
+    - oy
+    - p1
+    - p2
+    - a1
+    - a2
+    - b1
+    - b2
+    - r1
+    - r2
+
+line_length:
+  warning: 140
+  error: 200
+
+# Structural limits tuned for this compact codebase (menu-bar controller
+# naturally holds menu + state + prompt logic in one file).
+file_length:
+  warning: 700
+  error: 1200
+type_body_length:
+  warning: 700
+  error: 1200
+function_body_length:
+  warning: 80
+  error: 120
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+
+# Trailing commas in multi-line literals are the preferred Swift style here.
+disabled_rules:
+  - trailing_comma

@@ -26,39 +26,70 @@ public enum SMC {
         }
     }
 
+    // Kernel-layout mirrors: fields are read by AppleSMC via
+    // IOConnectCallStructMethod, which Periphery cannot see. The per-field
+    // periphery:ignore comments are the supported way to keep these.
+
     struct SMCVersion {
-        var major: UInt8 = 0, minor: UInt8 = 0, build: UInt8 = 0, reserved: UInt8 = 0
+        // periphery:ignore
+        var major: UInt8 = 0
+        // periphery:ignore
+        var minor: UInt8 = 0
+        // periphery:ignore
+        var build: UInt8 = 0
+        // periphery:ignore
+        var reserved: UInt8 = 0
+        // periphery:ignore
         var release: UInt16 = 0
     }
 
     struct SMCPLimitData {
-        var version: UInt16 = 0, length: UInt16 = 0
-        var cpuPLimit: UInt32 = 0, gpuPLimit: UInt32 = 0, memPLimit: UInt32 = 0
+        // periphery:ignore
+        var version: UInt16 = 0
+        // periphery:ignore
+        var length: UInt16 = 0
+        // periphery:ignore
+        var cpuPLimit: UInt32 = 0
+        // periphery:ignore
+        var gpuPLimit: UInt32 = 0
+        // periphery:ignore
+        var memPLimit: UInt32 = 0
     }
 
     struct SMCKeyInfoData {
         var dataSize: UInt32 = 0
         var dataType: UInt32 = 0
+        // periphery:ignore - kernel-layout mirror; see SMCVersion.
         var dataAttributes: UInt8 = 0
     }
 
+    // swiftlint:disable large_tuple
+    // (fixed 32-byte kernel layout; must stay a single tuple of 32 UInt8)
     typealias SMCBytes = (
         UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
         UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
         UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
         UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8
     )
+    // swiftlint:enable large_tuple
 
     struct SMCParamStruct {
+        // periphery:ignore - kernel-layout fields; read by AppleSMC via
+        // IOConnectCallStructMethod, which Periphery cannot see.
         var key: UInt32 = 0
         var vers = SMCVersion()
         var pLimitData = SMCPLimitData()
         var keyInfo = SMCKeyInfoData()
+        // periphery:ignore - see `key`.
         var padding: UInt16 = 0
         var result: UInt8 = 0
+        // periphery:ignore - see `key`.
         var status: UInt8 = 0
+        // periphery:ignore - see `key`.
         var data8: UInt8 = 0
+        // periphery:ignore - see `key`.
         var data32: UInt32 = 0
+        // periphery:ignore - see `key`.
         var bytes: SMCBytes = (
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -66,7 +97,6 @@ public enum SMC {
     }
 
     private static let kSMCHandleYPCEvent: UInt32 = 2
-    private static let kSMCReadKey: UInt8 = 5
     private static let kSMCWriteKey: UInt8 = 6
     private static let kSMCGetKeyInfo: UInt8 = 9
 
@@ -126,22 +156,6 @@ public enum SMC {
                 encoding: .ascii
             ) ?? "????"
             return (reply.keyInfo.dataSize, type)
-        }
-    }
-
-    public static func readByte(_ key: String) throws -> UInt8 {
-        try withConnection { connection in
-            var info = SMCParamStruct()
-            info.key = fourCC(key)
-            info.data8 = kSMCGetKeyInfo
-            let infoReply = try call(connection, info)
-
-            var request = SMCParamStruct()
-            request.key = fourCC(key)
-            request.data8 = kSMCReadKey
-            request.keyInfo.dataSize = infoReply.keyInfo.dataSize
-            let reply = try call(connection, request)
-            return reply.bytes.0
         }
     }
 
@@ -255,10 +269,6 @@ public enum MagSafeLED {
     /// Writes the LED color over a persistent connection (no open/close churn).
     public static func set(_ color: Color, using connection: SMC.Connection) throws {
         try connection.writeByte(key, color.rawValue)
-    }
-
-    public static func current() throws -> Color? {
-        Color(rawValue: try SMC.readByte(key))
     }
 
     public static func isSupported() -> Bool {

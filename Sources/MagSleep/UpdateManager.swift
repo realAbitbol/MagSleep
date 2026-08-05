@@ -52,10 +52,6 @@ final class UpdateManager: NSObject, SPUUpdaterDelegate {
         updater?.checkForUpdates()
     }
 
-    var canCheckForUpdates: Bool {
-        updater?.canCheckForUpdates ?? false
-    }
-
     // MARK: - SPUUpdaterDelegate
 
     func feedURLString(for updater: SPUUpdater) -> String? {

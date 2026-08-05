@@ -28,6 +28,7 @@ All commands are Makefile targets:
 | `make install` | Copy app to `/Applications` |
 | `make dmg VERSION=X.Y.Z` | Create distributable DMG |
 | `make test` | Run `swift test` (MagSleepCoreTests) |
+| `make lint` | Run SwiftLint + the Periphery dead-code scan (also runs in the git pre-commit hook) |
 | `make release VERSION=X.Y.Z` | Test, build DMG, update README/Makefile versions, commit, tag `vX.Y.Z`, push, publish GitHub Release with the DMG (`gh` required) |
 | `make clean` | Remove `.build` and `dist` |
 
@@ -68,16 +69,18 @@ magsleep-helper (root LaunchDaemon)
 - `Sources/MagSleepCore/Constants.swift` — paths, labels, `OperationMode`, `DaemonConfig`
 - `Sources/MagSleepCore/DaemonState.swift` — pure state transitions (`DaemonConfig.apply`, `DaemonConfig.load`, `LEDTarget`)
 - `Sources/MagSleepCore/SocketProtocol.swift` — `SocketRequest`/`SocketResponse` (newline-delimited JSON)
-- `Sources/MagSleep/StatusItemController.swift` — menu bar UI (icon per mode), config-dir watch + 15s fallback timer; menu: mode items with checkmarks (Sleep Mode / Always Off / Disabled), Launch at Login, Check for Updates, Copy Diagnostics, Buy me a coffee, Uninstall, About
+- `Sources/MagSleep/StatusItemController.swift` — menu bar UI (icon per mode), config-dir watch + 15s fallback timer; menu: mode items with checkmarks (Sleep Mode / Always Off / Disabled), Launch at Login, Check for Updates, Buy me a coffee, Uninstall, About
 
 ## Development notes
 
 - `install-helper.sh`/`uninstall-helper.sh` are the only scripts invoked at runtime. `disable-helper.sh` and `set-mode.sh` were removed: Disable is a socket request (daemon stays loaded, `enabled=false`), and `set-mode.sh` was never bundled (broken dead code).
 - Config is re-read at startup or when a request/socket ack arrives; the app also watches the config directory. SIGINT/SIGTERM are handled via dispatch signal sources that restore the LED to macOS control and exit non-zero — launchd's `KeepAlive` (`SuccessfulExit: false`) then revives the daemon whenever it is killed, so the LED briefly returns to macOS control before the daemon re-applies the active mode. bootout during install/uninstall unloads the job and stops it permanently. The app checks daemon liveness by connecting to the socket (cheap, no pgrep), and re-enables the helper on launch only if it's installed **but not running** — a deliberately "Disabled" helper stays disabled.
-- The app offers "Launch at Login" only when running from `/Applications` (`SMAppService.mainApp` pins the bundle path it registers from). "Check for Updates" queries the GitHub Releases API (repo: realAbitbol/MagSleep), throttled to once per day; "Copy Diagnostics" gathers versions, daemon state, config, and the live ACLC value.
+- The app offers "Launch at Login" only when running from `/Applications` (`SMAppService.mainApp` pins the bundle path it registers from). "Check for Updates" queries the GitHub Releases API (repo: realAbitbol/MagSleep), throttled to once per day.
 - `make release VERSION=X.Y.Z` automates the whole release (`scripts/release.sh`): it refuses dirty trees and existing tags, runs tests + `make dmg`, sed-updates the README `VERSION=1.0.x` examples and the Makefile default, commits, creates an annotated tag, pushes branch + tag to origin, and publishes the GitHub Release with the DMG via `gh`. Notarization stays a separate manual step (`make notarize`).
 - Notarization requires a paid Apple Developer Program membership (Developer ID cert); the app is ad-hoc signed and `make notarize` skips gracefully without a cert.
 
 ## Tests
 
 `make test` runs `Tests/MagSleepCoreTests` (XCTest): request → config transitions, config decode/fallback, LED target logic, SMC struct layout, constants/paths, and the socket JSON protocol round-trips.
+
+The git **pre-commit hook** (`make install-hooks`) runs SwiftLint, the Periphery dead-code scan, `swift test`, and a warnings-as-errors build; a commit is blocked if any fails. It requires `swiftlint` and `periphery` installed (`brew install swiftlint periphery`). Keep the helper's entry point as `@main` (in `MagSleepHelperMain.swift`) — Periphery cannot trace top-level executable code and would otherwise report the whole daemon as dead. Known false positives are marked in-source with `// periphery:ignore` (SMC kernel-layout struct fields read via `IOConnectCallStructMethod`, and retained-for-lifetime properties).

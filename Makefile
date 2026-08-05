@@ -2,7 +2,7 @@ VERSION ?= 1.2.1
 
 APP = dist/MagSleep.app
 
-.PHONY: app dmg install run clean test notarize release
+.PHONY: app dmg install run clean test notarize release lint install-hooks
 
 app:
 	scripts/build-app.sh $(VERSION)
@@ -30,6 +30,16 @@ clean:
 
 test:
 	swift test
+
+# Lint + dead-code scan (the same checks the pre-commit hook runs).
+lint:
+	swiftlint lint --strict
+	periphery scan --strict
+
+# Point git at the tracked hooks directory (no copying; every clone gets it).
+install-hooks:
+	git config core.hooksPath scripts/git-hooks
+	@echo "installed git hooks from scripts/git-hooks"
 
 # Notarizes dist/MagSleep.app — requires a Developer ID cert (paid membership).
 # Without one it prints guidance and exits 0.

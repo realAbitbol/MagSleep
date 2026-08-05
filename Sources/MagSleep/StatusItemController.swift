@@ -108,7 +108,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             if reachable {
                 self.updateMenuStates()
             } else {
-                self.helper.enable() { [weak self] _ in
+                self.helper.enable { [weak self] _ in
                     self?.updateMenuStates()
                 }
             }
@@ -243,12 +243,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         updateItem.target = self
         menu.addItem(updateItem)
 
-        // Copy Diagnostics
-        let diagnosticsItem = NSMenuItem(title: "Copy Diagnostics…", action: #selector(copyDiagnostics), keyEquivalent: "")
-        diagnosticsItem.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
-        diagnosticsItem.target = self
-        menu.addItem(diagnosticsItem)
-
         menu.addItem(NSMenuItem.separator())
 
         // Buy me a coffee
@@ -343,43 +337,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         updateManager.checkForUpdates()
     }
 
-    /// Copies a support-friendly diagnostics block to the clipboard.
-    @objc private func copyDiagnostics() {
-        var lines: [String] = []
-        lines.append("MagSleep Diagnostics")
-        lines.append("Generated: \(Date())")
-        lines.append("App version: \(helper.appVersion)")
-        lines.append("Helper version: \(helper.helperVersion ?? "not installed")")
-        lines.append("Helper installed: \(helper.isInstalled)")
-        lines.append("Helper running: \(helper.isLoaded)")
-        lines.append("Mode: \(helper.mode.rawValue)")
-        lines.append("Enabled: \(helper.isEnabled)")
-        lines.append("Socket: \(MagSleep.socketPath)")
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: MagSleep.configFilePath)),
-           let config = try? PropertyListDecoder().decode(DaemonConfig.self, from: data) {
-            lines.append("Config on disk: mode=\(config.mode.rawValue), enabled=\(config.enabled)")
-        } else {
-            lines.append("Config on disk: (unreadable or missing)")
-        }
-        if let color = try? MagSafeLED.current() {
-            lines.append("ACLC current: \(ledColorName(color))")
-        } else {
-            lines.append("ACLC current: (read failed)")
-        }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
-    }
-
-    private func ledColorName(_ color: MagSafeLED.Color) -> String {
-        switch color {
-        case .system: return "system (0)"
-        case .off: return "off (1)"
-        case .green: return "green (3)"
-        case .amber: return "amber (4)"
-        }
-    }
-
     @objc private func uninstall() {
         let alert = NSAlert()
         alert.messageText = "Uninstall MagSleep"
@@ -426,7 +383,10 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
         let body = NSMutableAttributedString()
         body.append(NSAttributedString(
-            string: "A tiny menu bar app that turns off the MagSafe LED on sleep and restores it on wake — or keeps it off completely in Always Off mode.\n\nApplication version: \(appVersion)\nHelper version: \(helperVersion)\n\nMade with ♥️ by Abitbol\n\n",
+            string: "A tiny menu bar app that turns off the MagSafe LED on sleep and restores it on wake — "
+                + "or keeps it off completely in Always Off mode.\n\n"
+                + "Application version: \(appVersion)\nHelper version: \(helperVersion)\n\n"
+                + "Made with ♥️ by Abitbol\n\n",
             attributes: [.paragraphStyle: centered]
         ))
         body.append(NSAttributedString(
@@ -537,7 +497,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         alert.addButton(withTitle: "Cancel")
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            helper.enable() { [weak self] success in
+            helper.enable { [weak self] success in
                 guard let self else { completion(true); return }
                 if success {
                     self.updateMenuStates()
@@ -581,7 +541,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         alert.addButton(withTitle: "Later")
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            helper.install() { [weak self] success in
+            helper.install { [weak self] success in
                 guard let self else { completion(true); return }
                 if !success {
                     self.handleHelperFailure("Failed to update helper")
@@ -612,12 +572,13 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private func showReinstallPrompt() {
         let alert = NSAlert()
         alert.messageText = "Can't connect to helper"
-        alert.informativeText = "MagSleep installed the helper but can't reach it. Reinstalling usually fixes this — you will be asked for your admin password."
+        alert.informativeText = "MagSleep installed the helper but can't reach it. "
+            + "Reinstalling usually fixes this — you will be asked for your admin password."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Reinstall Helper")
         alert.addButton(withTitle: "Later")
         if alert.runModal() == .alertFirstButtonReturn {
-            helper.install() { [weak self] success in
+            helper.install { [weak self] success in
                 guard let self else { return }
                 if success {
                     self.updateMenuStates()

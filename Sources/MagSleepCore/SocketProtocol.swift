@@ -18,6 +18,8 @@ public struct SocketRequest: Codable, Equatable {
 /// Response sent by the daemon. `config` is present on success; `error` on
 /// failure. The `id` echoes the request so callers can match replies.
 public struct SocketResponse: Codable, Equatable {
+    /// periphery:ignore - the daemon sets it and the client currently ignores
+    /// it (kept for request/response correlation); Periphery reports assign-only.
     public let id: String
     public let ok: Bool
     public let config: DaemonConfig?

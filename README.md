@@ -16,6 +16,15 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 
 </div>
 
+## Features
+
+- **Sleep Mode** — turns the MagSafe LED off while the Mac sleeps, restores it to macOS on wake
+- **Always Off** — keeps the LED off at all times (re-asserted even when you plug/unplug the charger)
+- **Disabled** — hands the LED back to macOS entirely, whenever you want
+- **Launch at Login** — starts MagSleep automatically when you log in
+- **In-app updates** — checks for new versions automatically (twice a day) and installs them with Sparkle; no more manual DMG downloads
+- Lives quietly in the menu bar; the helper keeps working even if you quit the app
+
 ## Requirements
 
 - Apple Silicon MacBook with **MagSafe 3** (2021 or later MacBook Pro / Air)
@@ -25,9 +34,9 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 
 Intel Macs are not supported.
 
-## Install
+## How to install
 
-### From a DMG
+### From a DMG (recommended)
 
 1. Download the latest MagSleep DMG from the [Releases](https://github.com/realAbitbol/MagSleep/releases) page.
 2. Open the DMG and drag **MagSleep** into **Applications**.
@@ -35,7 +44,7 @@ Intel Macs are not supported.
 4. Click the menu bar icon and choose **Sleep Mode** (or **Always Off**) — this installs the helper and asks for your admin password once.
 
 > [!IMPORTANT]
-> MagSleep is **ad-hoc signed, not notarized** (notarization requires a paid Apple Developer Program membership). macOS therefore quarantines the downloaded app, and Gatekeeper may block the first launch. This is expected — unblock it with one of the methods below. See [Notarization & distribution](#notarization--distribution).
+> MagSleep is **ad-hoc signed, not notarized** (notarization requires a paid Apple Developer Program membership). macOS therefore quarantines the downloaded app, and Gatekeeper may block the first launch. This is expected — unblock it with one of the methods below.
 
 #### If Gatekeeper blocks the app or the DMG
 
@@ -81,11 +90,68 @@ xattr -l /Applications/MagSleep.app | grep quarantine
 No output means the flag is gone and Gatekeeper will no longer block it.
 
 > [!NOTE]
-> - Updating to a newer DMG re-quarantines the app, so you may need to repeat Method D after each update.
 > - Removing the quarantine flag is safe: MagSleep is open source and built locally from this repository.
 > - Gatekeeper exceptions work best when the app lives in `/Applications`. If it still won't open, move it there and retry Method A or B.
 
-### From source
+## How to use
+
+1. Click the menu bar icon and choose a mode:
+   - **Sleep Mode** — LED off while the Mac sleeps, restored to macOS on wake (recommended)
+   - **Always Off** — LED stays off at all times
+   - **Disabled** — hand the LED back to macOS entirely
+2. The first mode selection installs the small root helper and asks for your admin password once.
+3. Optionally enable **Launch at Login** so MagSleep starts automatically.
+
+That's it. Sleep and wake are handled automatically — the helper keeps running even if you quit the menu bar app, as long as it stays enabled.
+
+### Menu reference
+
+| Item | Action |
+|------|--------|
+| **Sleep Mode** | LED off while the Mac sleeps, restored to macOS on wake |
+| **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
+| **Disabled** | Hand the LED back to macOS entirely |
+| **Launch at Login** | Start MagSleep when you log in |
+| **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
+| **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
+| **Uninstall MagSleep…** | Full cleanup, then quit |
+| **About MagSleep…** | App and helper version info |
+| **Quit MagSleep** | Quit the menu bar UI (the helper keeps running if enabled) |
+
+## How to update
+
+- **Automatic**: MagSleep checks for new versions twice a day and offers the update when one is available.
+- **Manual**: click **Check for Updates…** in the menu bar to check right now.
+- Updates are downloaded and installed **in-place by Sparkle** (no DMG, no need to reinstall), then the app relaunches.
+- If you ever reinstall from a fresh DMG instead, macOS may block it again — see the Gatekeeper guide in *How to install* above.
+
+## How to uninstall
+
+**From the app:** **Uninstall MagSleep…** → confirm → admin password.
+
+That restores macOS LED control, unloads and deletes the helper and LaunchDaemon, turns off Launch at Login, and quits. Delete `MagSleep.app` afterwards if you want.
+
+**From the terminal:**
+
+```bash
+sudo launchctl bootout system/com.magsleep.helper 2>/dev/null || true
+sudo /Library/PrivilegedHelperTools/com.magsleep.helper --reset 2>/dev/null || true
+sudo rm -f /Library/PrivilegedHelperTools/com.magsleep.helper
+sudo rm -f /Library/LaunchDaemons/com.magsleep.helper.plist
+sudo rm -rf /Library/Preferences/MagSleep
+sudo rm -rf /Library/Logs/MagSleep
+sudo rm -rf /tmp/magsleep
+```
+
+## Support ☕
+
+If MagSleep keeps your nights a little darker, you can [buy me a coffee](https://ko-fi.com/realabitbol).
+
+---
+
+# For developers
+
+## Building from source
 
 ```bash
 git clone <repo-url>
@@ -96,34 +162,41 @@ make install VERSION=1.2.1  # copy to /Applications
 make dmg VERSION=1.2.1    # dist/MagSleep-1.2.1.dmg
 ```
 
+## Build targets
+
+| Command | Result |
+|---------|--------|
+| `make app VERSION=x.y.z` | Build `dist/MagSleep.app` with that version |
+| `make dmg VERSION=x.y.z` | `dist/MagSleep-<version>.dmg` |
+| `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
+| `make run` | Build and open |
+| `make test` | Run the XCTest unit tests |
+| `make lint` | Run SwiftLint + Periphery dead-code scan (also runs in the git pre-commit hook) |
+| `make install-hooks` | Install the git pre-commit hook (SwiftLint, Periphery, tests, warnings-as-errors build); requires `swiftlint` and `periphery` (`brew install swiftlint periphery`) |
+| `make notarize` | Sign + notarize with a Developer ID cert if present (skips gracefully without one) |
+| `make release VERSION=x.y.z` | Full release: test, build DMG, update versions, commit, tag, push, publish GitHub Release + Sparkle appcast |
+| `make clean` | Remove `.build` and `dist` |
+
+The version is written to the app's `Info.plist` and to the helper version file on install; launching an app whose version differs from the installed helper triggers an "Update Helper" prompt.
+
+## Release process
+
+`make release VERSION=x.y.z` automates a full release (`scripts/release.sh`):
+
+- Refuses a dirty tree or an existing tag
+- Runs tests, builds the DMG and the Sparkle update ZIP
+- Updates the README/Makefile version references
+- Regenerates and signs `appcast/appcast.xml` (Sparkle EdDSA), committing it
+- Commits, creates tag `vX.Y.Z`, pushes branch + tag
+- Publishes the GitHub Release with the DMG + ZIP attached
+
+Requirements: a clean tree, a `gh`-authenticated session, and the Sparkle EdDSA signing key (from `generate_keys`) in the login keychain.
+
 ## Notarization & distribution
 
 MagSleep is **ad-hoc signed**, not notarized: notarization requires an Apple Developer Program membership (paid, \$99/yr) and a Developer ID certificate. Because of this, DMGs downloaded from the internet may be blocked by Gatekeeper — prefer building from source (`make app` + `make install`), which produces a locally-built app with no quarantine flag.
 
 If you ever join the Apple Developer Program, `make notarize` signs with your Developer ID certificate, submits for notarization, and staples the ticket. Without a certificate it prints guidance and exits 0.
-
-## First-time setup
-
-1. Open MagSleep from the menu bar.
-2. Choose a mode (**Sleep Mode** or **Always Off**) — this installs the small root helper (one admin prompt).
-3. Optionally turn on **Launch at Login**.
-
-After that, sleep and wake are handled automatically even if you quit the menu bar app — as long as the helper stays enabled. Quitting the app does **not** disable the helper; it keeps running in the mode you chose.
-
-## What the menu does
-
-| Item | Action |
-|------|--------|
-| **Sleep Mode** | LED off while the Mac sleeps, restored to macOS on wake |
-| **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
-| **Disabled** | Hand the LED back to macOS entirely |
-| **Launch at Login** | Start MagSleep when you log in |
-| **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
-| **Copy Diagnostics…** | Copy a support-ready status block to the clipboard |
-| **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
-| **Uninstall MagSleep…** | Full cleanup, then quit |
-| **About MagSleep…** | App and helper version info |
-| **Quit MagSleep** | Quit the menu bar UI (the helper keeps running if enabled) |
 
 ## How it works
 
@@ -143,36 +216,6 @@ MagSleep is a lightweight AppKit menu bar app plus a privileged LaunchDaemon. Th
 
 MagSafe LED control is undocumented. A macOS or firmware update may change or break it.
 
-## Uninstall
+## Tests
 
-**From the app:** **Uninstall MagSleep…** → confirm → admin password.
-
-That restores macOS LED control, unloads and deletes the helper and LaunchDaemon, turns off Launch at Login, and quits. Delete `MagSleep.app` afterwards if you want.
-
-**From the terminal:**
-
-```bash
-sudo launchctl bootout system/com.magsleep.helper 2>/dev/null || true
-sudo /Library/PrivilegedHelperTools/com.magsleep.helper --reset 2>/dev/null || true
-sudo rm -f /Library/PrivilegedHelperTools/com.magsleep.helper
-sudo rm -f /Library/LaunchDaemons/com.magsleep.helper.plist
-sudo rm -rf /Library/Preferences/MagSleep
-sudo rm -rf /Library/Logs/MagSleep
-sudo rm -rf /tmp/magsleep
-```
-
-## Build targets
-
-| Command | Result |
-|---------|--------|
-| `make app VERSION=x.y.z` | Build `dist/MagSleep.app` with that version |
-| `make dmg VERSION=x.y.z` | `dist/MagSleep-<version>.dmg` |
-| `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
-| `make run` | Build and open |
-| `make clean` | Remove `.build` and `dist` |
-
-The version is written to the app's `Info.plist` and to the helper version file on install; launching an app whose version differs from the installed helper triggers an "Update Helper" prompt.
-
-## Support ☕
-
-If MagSleep keeps your nights a little darker, you can [buy me a coffee](https://ko-fi.com/realabitbol).
+`make test` runs `Tests/MagSleepCoreTests` (XCTest): request → config transitions, config decode/fallback, LED target logic, SMC struct layout, constants/paths, socket protocol round-trips, and version comparison.

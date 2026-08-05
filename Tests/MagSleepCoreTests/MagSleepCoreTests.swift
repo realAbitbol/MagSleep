@@ -180,30 +180,6 @@ final class SocketProtocolTests: XCTestCase {
     }
 }
 
-final class SemanticVersionTests: XCTestCase {
-    func testEqualVersions() {
-        XCTAssertEqual(SemanticVersion("1.0.0"), SemanticVersion("1.0.0"))
-        XCTAssertFalse(SemanticVersion("1.0.0") > SemanticVersion("1.0.0"))
-    }
-
-    func testNewerMajorMinorPatch() {
-        XCTAssertTrue(SemanticVersion("1.1.0") > SemanticVersion("1.0.9"))
-        XCTAssertTrue(SemanticVersion("2.0.0") > SemanticVersion("1.9.9"))
-        XCTAssertTrue(SemanticVersion("1.0.10") > SemanticVersion("1.0.9"))
-    }
-
-    func testShorterVersionsCompareAsZeroPadded() {
-        XCTAssertTrue(SemanticVersion("1.1") > SemanticVersion("1.0.9"))
-        XCTAssertTrue(SemanticVersion("1.0.1") > SemanticVersion("1.0"))
-        XCTAssertFalse(SemanticVersion("1.0") > SemanticVersion("1.0.0"))
-    }
-
-    func testNonNumericComponentsAreIgnored() {
-        XCTAssertEqual(SemanticVersion("1.0.0-beta").components, [1, 0])
-        XCTAssertEqual(SemanticVersion("1.0.5"), SemanticVersion("1.0.5"))
-    }
-}
-
 final class ConstantsTests: XCTestCase {
     func testOperationModeRawValues() {
         XCTAssertEqual(OperationMode.sleep.rawValue, "sleep")

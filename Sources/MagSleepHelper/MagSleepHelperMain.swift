@@ -39,7 +39,10 @@ final class PowerDaemon {
     private var notifierObject: io_object_t = 0
     private var signalSources: [DispatchSourceSignal] = []
     private var socketServer: SocketServer?
+    // periphery:ignore - retained for lifetime (the run loop also holds these,
+    // but the stored reference keeps them alive deterministically); never read.
     private var powerSourceSource: CFRunLoopSource?
+    // periphery:ignore - see `powerSourceSource`.
     private var reassertTimer: Timer?
     /// Persistent SMC connection (opened lazily on first apply; retried on failure).
     private var smc: SMC.Connection?
@@ -385,10 +388,18 @@ final class PowerDaemon {
     }
 }
 
-// One-shot: restore the LED to macOS control and exit (uninstall/disable path).
-if CommandLine.arguments.contains("--reset") {
-    try? MagSafeLED.set(.system)
-    exit(0)
+/// Entry point. Using `@main` (instead of top-level code) lets Periphery
+/// trace the real entry point, so the daemon's members are not reported as
+/// dead code.
+@main
+enum MagSleepHelperMain {
+    static func main() {
+        // One-shot: restore the LED to macOS control and exit
+        // (uninstall/disable path).
+        if CommandLine.arguments.contains("--reset") {
+            try? MagSafeLED.set(.system)
+            exit(0)
+        }
+        PowerDaemon().run()
+    }
 }
-
-PowerDaemon().run()
