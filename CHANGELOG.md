@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.8] - 2026-08-05
+
+### Changed
+
+- Every release DMG is now uploaded to **VirusTotal** before publishing: the verdict appears as a README badge and as a proof line in this changelog (requires the `VIRUSTOTAL_API_KEY` environment variable; the scan is skipped with a warning when it's absent)
+
 ## [1.2.7] - 2026-08-05
 
 ### Changed

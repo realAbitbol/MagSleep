@@ -14,6 +14,10 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 ![Language](https://img.shields.io/badge/Swift-6-orange)
 ![License](https://img.shields.io/badge/personal%20use-welcome-lightgrey)
 
+<!-- VT_BADGE -->
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-scan%20on%20release-394eff?logo=virustotal)](https://github.com/realAbitbol/MagSleep/releases)
+<!-- /VT_BADGE -->
+
 </div>
 
 ## Features
@@ -23,6 +27,7 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 - **Disabled** — hands the LED back to macOS entirely, whenever you want
 - **Launch at Login** — starts MagSleep automatically when you log in
 - **In-app updates** — checks for new versions automatically (twice a day) and installs them with Sparkle; no more manual DMG downloads
+- **VirusTotal-scanned** — every release DMG is uploaded to VirusTotal before publishing; the badge above links to the current scan result
 - Lives quietly in the menu bar; the helper keeps working even if you quit the app
 
 ## Requirements

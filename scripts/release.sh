@@ -46,6 +46,67 @@ fi
 make test
 make dmg VERSION="$VERSION"
 
+# 2.5. VirusTotal scan -------------------------------------------------------
+# Upload the DMG, wait for the verdict, and publish proof: the README badge
+# (between the <!-- VT_BADGE --> markers) is rewritten and the CHANGELOG
+# section gains a proof line — which 3.4 embeds in the release body + appcast.
+# Best-effort: a missing key or a VirusTotal outage degrades to a warning and
+# the permalink (derived from the local sha256) is still computed.
+VT_OUTPUT="$(scripts/virustotal-scan.sh "$DMG")"
+VT_STATUS="$(printf '%s\n' "$VT_OUTPUT" | sed -n 's/^status=//p' | head -1)"
+VT_PERMALINK="$(printf '%s\n' "$VT_OUTPUT" | sed -n 's/^permalink=//p' | head -1)"
+VT_BADGE=""
+VT_LABEL=""
+if [ "$VT_STATUS" = "completed" ]; then
+    VT_BADGE="$(printf '%s\n' "$VT_OUTPUT" | sed -n 's/^badge=//p' | head -1)"
+    VT_LABEL="$(printf '%s\n' "$VT_OUTPUT" | sed -n 's/^verdict=//p' | head -1)"
+    echo "VirusTotal: $VT_LABEL ($VT_PERMALINK)"
+elif [ "$VT_STATUS" = "submitted" ]; then
+    VT_LABEL="submitted — results pending"
+    echo "warning: VirusTotal analysis still pending; publishing the permalink" >&2
+elif [ "$VT_STATUS" = "skipped" ]; then
+    echo "warning: VirusTotal scan skipped (VIRUSTOTAL_API_KEY not set)" >&2
+else
+    echo "warning: VirusTotal scan failed — $(printf '%s\n' "$VT_OUTPUT" | sed -n 's/^reason=//p' | head -1)" >&2
+fi
+if [ -n "$VT_LABEL" ]; then
+    python3 - "$VERSION" "$VT_BADGE" "$VT_LABEL" "$VT_PERMALINK" <<'PY'
+import sys
+version, badge, label, permalink = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+warnings = []
+
+if badge:
+    path = "README.md"
+    s = open(path).read()
+    start, end = "<!-- VT_BADGE -->", "<!-- /VT_BADGE -->"
+    if start in s and end in s:
+        i, j = s.index(start), s.index(end)
+        line = f"[![VirusTotal](https://img.shields.io/badge/VirusTotal-{badge}-4c1?logo=virustotal)]({permalink})"
+        open(path, "w").write(s[: i + len(start)] + "\n" + line + "\n" + s[j:])
+    else:
+        warnings.append("VT_BADGE markers not found in README")
+
+path = "CHANGELOG.md"
+s = open(path).read()
+hdr = f"## [{version}]"
+if hdr in s:
+    i = s.index(hdr)
+    j = s.find("\n## [", i + 1)
+    if j == -1:
+        j = len(s)
+    line = f"- VirusTotal scan of the DMG: [{label}]({permalink})"
+    # Contiguous bullets, then the blank line before the next section.
+    prefix = s[:j].rstrip("\n")
+    suffix = s[j:].lstrip("\n")
+    open(path, "w").write(prefix + "\n" + line + "\n\n" + suffix)
+else:
+    warnings.append(f"no CHANGELOG section for [{version}]")
+
+if warnings:
+    print("warning: " + "; ".join(warnings), file=sys.stderr)
+PY
+fi
+
 # 3. Update version references ----------------------------------------------
 # README "From source" examples (VERSION=1.0.x) and DMG filenames
 # (MagSleep-1.0.x.dmg, e.g. the Gatekeeper guide) to the new version.
@@ -99,7 +160,7 @@ else
 fi
 
 # 4. Commit + tag -----------------------------------------------------------
-git add README.md Makefile appcast/appcast.xml
+git add README.md CHANGELOG.md Makefile appcast/appcast.xml
 if ! git diff --cached --quiet; then
     git commit -m "Release v$VERSION"
 fi
