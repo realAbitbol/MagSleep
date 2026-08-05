@@ -3,6 +3,24 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.6</title>
+            <pubDate>Wed, 05 Aug 2026 23:28:12 +0200</pubDate>
+            <sparkle:version>202608052327</sparkle:version>
+            <sparkle:shortVersionString>1.2.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Changed
+
+- The menu bar **version header is no longer greyed** (bold, normal text color)
+
+### Removed
+
+- **Shortcuts (App Intents)**: the SwiftPM build path cannot emit the AppIntents metadata (`Metadata.appintents`) the Shortcuts app requires, so the actions never appeared — the code was removed rather than shipped dead. **AppleScript remains the automation surface** (fully supported and verified)
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.6/MagSleep-1.2.6.zip" length="2149886" type="application/octet-stream" sparkle:edSignature="FAa4SSBRKpI9GTN+cnhJuj6cnzX7h8gClcp7V2QARAb3ddrSv54qy+5UBXwOjQfv86KuP8DCCKrX4hybU0BIAw=="/>
+        </item>
+        <item>
             <title>1.2.5</title>
             <pubDate>Wed, 05 Aug 2026 23:17:19 +0200</pubDate>
             <sparkle:version>202608052317</sparkle:version>
@@ -34,31 +52,6 @@
 - The helper is now reinstalled only when helper-affecting code actually changes: the app compares the installed helper's **revision** (last commit touching the helper, the shared core it links, or its LaunchDaemon plist) against the bundled revision, instead of the app version — so the unchanged helper is no longer reinstalled on every app update. The About window shows "Helper up to date: Yes/No" instead of a helper version number; Report a Problem shows the helper revision for triage
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.4/MagSleep-1.2.4.zip" length="2139201" type="application/octet-stream" sparkle:edSignature="s+KoTQKygfi46sSzjihZ2vVrsD7wE6Yec0Eo8uTFuEOO4g7jEish/8SEALRxiK9L2aaW+ytIw8IejfWmfbL/BA=="/>
-        </item>
-        <item>
-            <title>1.2.3</title>
-            <pubDate>Wed, 05 Aug 2026 21:42:13 +0200</pubDate>
-            <sparkle:version>202608052142</sparkle:version>
-            <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Added
-
-- **First-run onboarding window**: installs the helper, picks Sleep Mode vs Always Off, and sets Launch at Login in one step. Modern macOS layout — app-icon header, tappable mode cards, and a Launch-at-Login switch. Onboarding is mandatory: the app cannot function without the helper, so the only ways out are installing it or **Cancel & Quit** (a declined admin prompt shows an in-window error and lets the user retry)
-- **Report a Problem…** menu item: opens the GitHub issue tracker with app/helper versions pre-filled
-
-### Changed
-
-- The menu no longer shows a redundant greyed status line at the top — state is conveyed by the menu bar icon and the mode checkmarks
-- The mode checkmark now reflects the persisted config immediately at launch (previously it stayed unchecked until the 15s refresh timer fired when the helper was healthy)
-- `make release` uses the release's `CHANGELOG.md` section as the GitHub release body and Sparkle update notes
-
-### Removed
-
-- **Homebrew distribution** (cask + `realAbitbol/homebrew-tap` publishing): Homebrew is phasing out casks that require Gatekeeper overrides for unnotarized apps on September 1, 2026, so the DMG is the sole distribution channel
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.3/MagSleep-1.2.3.zip" length="2137393" type="application/octet-stream" sparkle:edSignature="tVWfNFTVAT3qbgoLb2zhHuKF+/dHbNh0Ck44G+u6lfKlg90FVQ6XNOKYMQBqe2wrpfrw3sZA69PqEVMS904hBg=="/>
         </item>
     </channel>
 </rss>
