@@ -3,6 +3,20 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.7</title>
+            <pubDate>Wed, 05 Aug 2026 23:34:48 +0200</pubDate>
+            <sparkle:version>202608052334</sparkle:version>
+            <sparkle:shortVersionString>1.2.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Changed
+
+- The menu bar version header is **greyed** again — the same dimmed header other menu-bar apps use — reverting the v1.2.6 "no longer greyed" change (the greyed look reads more naturally)
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.7/MagSleep-1.2.7.zip" length="2149966" type="application/octet-stream" sparkle:edSignature="1iAKQttuYo/4CQvXiEozhi4sac61NQAnTkUIK+sycLa+XIsFexaOtVKpIjLWucOSiu0BwheetZ6Irojjsk1MBg=="/>
+        </item>
+        <item>
             <title>1.2.6</title>
             <pubDate>Wed, 05 Aug 2026 23:28:12 +0200</pubDate>
             <sparkle:version>202608052327</sparkle:version>
@@ -38,20 +52,6 @@
 - The mode→command mapping is now centralized once in `MagSleepCore.LEDMode` (shared by the menu, Shortcuts, and AppleScript) and pinned to the daemon's `RequestCommand` vocabulary, so the three surfaces can never drift
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.5/MagSleep-1.2.5.zip" length="2173760" type="application/octet-stream" sparkle:edSignature="Ik3eomb0XZe0eYQzmezyWCWi/Ikq+fsRwaotRRgXybXdpEB9qz3TriRRMQ4/zoNEjJTS+wLNzTr27ZaPGi8aBg=="/>
-        </item>
-        <item>
-            <title>1.2.4</title>
-            <pubDate>Wed, 05 Aug 2026 22:07:55 +0200</pubDate>
-            <sparkle:version>202608052207</sparkle:version>
-            <sparkle:shortVersionString>1.2.4</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Changed
-
-- The helper is now reinstalled only when helper-affecting code actually changes: the app compares the installed helper's **revision** (last commit touching the helper, the shared core it links, or its LaunchDaemon plist) against the bundled revision, instead of the app version — so the unchanged helper is no longer reinstalled on every app update. The About window shows "Helper up to date: Yes/No" instead of a helper version number; Report a Problem shows the helper revision for triage
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.4/MagSleep-1.2.4.zip" length="2139201" type="application/octet-stream" sparkle:edSignature="s+KoTQKygfi46sSzjihZ2vVrsD7wE6Yec0Eo8uTFuEOO4g7jEish/8SEALRxiK9L2aaW+ytIw8IejfWmfbL/BA=="/>
         </item>
     </channel>
 </rss>
