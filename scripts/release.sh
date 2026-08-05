@@ -23,8 +23,10 @@ DMG="dist/MagSleep-$VERSION.dmg"
 ZIP="dist/MagSleep-$VERSION.zip"
 BRANCH="$(git branch --show-current)"
 
-# Locate Sparkle's appcast generator (built via SPM dependency).
-SPARKLE_BIN="$(dirname "$0")/../.build/artifacts/sparkle/Sparkle/bin"
+# Locate Sparkle's appcast generator (built via SPM dependency). Must be an
+# ABSOLUTE path: it is invoked from a subshell that cd's into the staging dir.
+ROOT="$(pwd -P)"
+SPARKLE_BIN="$ROOT/.build/artifacts/sparkle/Sparkle/bin"
 GENERATE_APPCAST="$SPARKLE_BIN/generate_appcast"
 if [ ! -x "$GENERATE_APPCAST" ]; then
     GENERATE_APPCAST="$(command -v generate_appcast || true)"
