@@ -238,3 +238,49 @@ final class HelperVersioningTests: XCTestCase {
         XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: "e2e22d7", bundledRevision: "unknown"))
     }
 }
+
+final class LEDModeTests: XCTestCase {
+    func testSocketCommands() {
+        XCTAssertEqual(LEDMode.sleep.socketCommand, "mode:sleep")
+        XCTAssertEqual(LEDMode.alwaysOff.socketCommand, "mode:alwaysOff")
+        XCTAssertEqual(LEDMode.disabled.socketCommand, "disable")
+    }
+
+    func testOperationModeMapping() {
+        XCTAssertEqual(LEDMode.sleep.operationMode, .sleep)
+        XCTAssertEqual(LEDMode.alwaysOff.operationMode, .alwaysOff)
+        XCTAssertNil(LEDMode.disabled.operationMode)
+    }
+
+    func testRawValueParsing() {
+        XCTAssertEqual(LEDMode(rawValue: "sleep"), .sleep)
+        XCTAssertEqual(LEDMode(rawValue: "alwaysOff"), .alwaysOff)
+        XCTAssertEqual(LEDMode(rawValue: "disabled"), .disabled)
+        XCTAssertNil(LEDMode(rawValue: "bogus"))
+    }
+}
+
+final class LEDStatusDescriptionTests: XCTestCase {
+    func testStatusDescriptions() {
+        XCTAssertEqual(
+            LEDStatusDescription.describe(isInstalled: false, isLoaded: false, isEnabled: false, mode: .sleep),
+            "not installed"
+        )
+        XCTAssertEqual(
+            LEDStatusDescription.describe(isInstalled: true, isLoaded: false, isEnabled: false, mode: .sleep),
+            "helper not running"
+        )
+        XCTAssertEqual(
+            LEDStatusDescription.describe(isInstalled: true, isLoaded: true, isEnabled: false, mode: .sleep),
+            "disabled (macOS control)"
+        )
+        XCTAssertEqual(
+            LEDStatusDescription.describe(isInstalled: true, isLoaded: true, isEnabled: true, mode: .sleep),
+            "sleep mode"
+        )
+        XCTAssertEqual(
+            LEDStatusDescription.describe(isInstalled: true, isLoaded: true, isEnabled: true, mode: .alwaysOff),
+            "always off"
+        )
+    }
+}

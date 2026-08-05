@@ -26,6 +26,10 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>MagSleep.sdef</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsSuddenTermination</key>

@@ -119,6 +119,23 @@ That's it. Sleep and wake are handled automatically — the helper keeps running
 | **About MagSleep…** | App version and helper status |
 | **Quit MagSleep** | Quit the menu bar UI (the helper keeps running if enabled) |
 
+## Automation
+
+MagSleep is scriptable from **Shortcuts** and **AppleScript** — both go through the same socket requests as the menu items, so no helper reinstall is involved.
+
+**Shortcuts** (macOS 13+): the app provides **Set LED Mode**, **Turn LED Off**, **Turn LED On**, and **Get LED Status** actions — open the Shortcuts app, add a MagSleep action, and use it in any shortcut or automation.
+
+**AppleScript** (e.g. in Script Editor):
+
+```applescript
+tell application "MagSleep"
+    set led mode "alwaysOff"   -- "sleep" | "alwaysOff" | "disabled"
+    turn LED off
+    turn LED on
+    get led status
+end tell
+```
+
 ## How to update
 
 - **Automatic**: MagSleep checks for new versions twice a day and offers the update when one is available.

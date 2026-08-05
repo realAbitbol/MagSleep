@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary>
+    <suite name="MagSleep Suite" code="MgsL" description="Commands to control the MagSafe LED">
+        <command name="set led mode" code="MgsLsmde" description="Set how the MagSafe LED behaves (sleep, alwaysOff, or disabled)">
+            <cocoa class="SetLEDModeCommand"/>
+            <direct-parameter type="text" description="sleep, alwaysOff, or disabled"/>
+        </command>
+        <command name="turn LED off" code="MgsLtoff" description="Turn the MagSafe LED off at all times (Always Off mode)">
+            <cocoa class="TurnLEDOffCommand"/>
+        </command>
+        <command name="turn LED on" code="MgsLtonn" description="Return the MagSafe LED to macOS control">
+            <cocoa class="TurnLEDOnCommand"/>
+        </command>
+        <command name="get led status" code="MgsLgsts" description="Report how the MagSafe LED is currently managed">
+            <cocoa class="GetLEDStatusCommand"/>
+            <result type="text"/>
+        </command>
+    </suite>
+</dictionary>

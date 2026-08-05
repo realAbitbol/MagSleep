@@ -23,6 +23,16 @@ final class HelperManager {
     /// is nil in both cases).
     private(set) var lastAttemptWasCancelled = false
 
+    /// Compact status string shared by Shortcuts and AppleScript.
+    var statusDescription: String {
+        LEDStatusDescription.describe(
+            isInstalled: isInstalled,
+            isLoaded: isLoaded,
+            isEnabled: isEnabled,
+            mode: mode
+        )
+    }
+
     /// How often to re-probe the socket while confirming a fresh install.
     private let connectionConfirmInterval: TimeInterval = 1.0
     /// How long to wait for the daemon to come up before declaring failure.
@@ -218,6 +228,17 @@ final class HelperManager {
     }
 
     // MARK: - Mode Management (via socket, no admin)
+
+    /// Applies a user-facing LED mode (Sleep / Always Off / Disabled) through
+    /// the same `setMode`/`disable` paths the menu uses — the single entry
+    /// point for the menu, Shortcuts, and AppleScript.
+    func apply(_ mode: LEDMode, completion: @escaping (Bool) -> Void) {
+        if let operation = mode.operationMode {
+            setMode(operation, completion: completion)
+        } else {
+            disable(completion: completion)
+        }
+    }
 
     func setMode(_ newMode: OperationMode, completion: @escaping (Bool) -> Void) {
         guard isLoaded else {

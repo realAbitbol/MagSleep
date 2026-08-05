@@ -1,8 +1,9 @@
 import Foundation
 
 /// Commands the app can send to the daemon (via the socket protocol).
-/// Internal: only used by `DaemonConfig.apply` within this module (tests reach
-/// it via `@testable`).
+/// The single source of the wire vocabulary: `DaemonConfig.apply` parses them
+/// and `LEDMode.socketCommand` produces them, so the two can never drift.
+/// Internal: only used within this module (tests reach it via `@testable`).
 enum RequestCommand {
     static let modeSleep = "mode:sleep"
     static let modeAlwaysOff = "mode:alwaysOff"

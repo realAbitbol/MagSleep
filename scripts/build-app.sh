@@ -29,6 +29,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp "$BIN_DIR/MagSleep" "$APP/Contents/MacOS/MagSleep"
 cp "$BIN_DIR/magsleep-helper" "$APP/Contents/Resources/magsleep-helper"
 cp packaging/com.magsleep.helper.plist "$APP/Contents/Resources/"
+cp packaging/MagSleep.sdef "$APP/Contents/Resources/"
 cp scripts/install-helper.sh scripts/uninstall-helper.sh \
     "$APP/Contents/Resources/"
 # Sparkle framework (SwiftPM puts it in the build bin dir; versioned bundle,

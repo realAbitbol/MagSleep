@@ -226,6 +226,21 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private func createMenu() {
         let menu = NSMenu()
 
+        // Version header (static, non-selectable). No icon: any SF Symbol here
+        // would collide with a mode icon. Bold + secondary color reads as a
+        // header without fighting the mode items below.
+        let versionItem = NSMenuItem()
+        versionItem.attributedTitle = NSAttributedString(
+            string: "MagSleep v\(helper.appVersion)",
+            attributes: [
+                .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]
+        )
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+        menu.addItem(NSMenuItem.separator())
+
         // Mode items (checkmark shows the current mode)
         modeSleepItem.title = "Sleep Mode"
         modeSleepItem.toolTip = "Turn LED off on sleep, restore on wake"
@@ -309,7 +324,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             showOnboarding(completion: { _ in })
             return
         }
-        helper.setMode(.sleep) { [weak self] success in
+        helper.apply(.sleep) { [weak self] success in
             guard let self else { return }
             if success {
                 self.updateMenuStates()
@@ -324,7 +339,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             showOnboarding(completion: { _ in })
             return
         }
-        helper.setMode(.alwaysOff) { [weak self] success in
+        helper.apply(.alwaysOff) { [weak self] success in
             guard let self else { return }
             if success {
                 self.updateMenuStates()
@@ -335,7 +350,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     }
 
     @objc private func setDisabledMode() {
-        helper.disable { [weak self] success in
+        helper.apply(.disabled) { [weak self] success in
             guard let self else { return }
             if success {
                 self.updateMenuStates()

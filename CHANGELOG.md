@@ -8,6 +8,17 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.5] - 2026-08-05
+
+### Added
+
+- **Automation**: MagSleep is now scriptable from **Shortcuts** (App Intents: Set LED Mode, Turn LED Off, Turn LED On, Get LED Status) and **AppleScript** (`set led mode`, `turn LED off`, `turn LED on`, `get led status`) — both route through the same socket requests as the menu items
+- The menu bar menu now shows a **bold "MagSleep v1.2.5" header**
+
+### Changed
+
+- The mode→command mapping is now centralized once in `MagSleepCore.LEDMode` (shared by the menu, Shortcuts, and AppleScript) and pinned to the daemon's `RequestCommand` vocabulary, so the three surfaces can never drift
+
 ## [1.2.4] - 2026-08-05
 
 ### Changed
