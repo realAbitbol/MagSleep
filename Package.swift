@@ -9,6 +9,9 @@ let package = Package(
     products: [
         .library(name: "MagSleepCore", targets: ["MagSleepCore"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
+    ],
     targets: [
         .target(
             name: "MagSleepCore",
@@ -16,8 +19,16 @@ let package = Package(
         ),
         .executableTarget(
             name: "MagSleep",
-            dependencies: ["MagSleepCore"],
-            path: "Sources/MagSleep"
+            dependencies: [
+                "MagSleepCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            path: "Sources/MagSleep",
+            // The app bundle is assembled manually (build-app.sh), so the
+            // Sparkle framework must be found at @executable_path/../Frameworks.
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+            ]
         ),
         .executableTarget(
             name: "magsleep-helper",

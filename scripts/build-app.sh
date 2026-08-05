@@ -24,13 +24,16 @@ swift build -c release $ARCH_FLAGS
 BIN_DIR="$(swift build -c release $ARCH_FLAGS --show-bin-path)"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
 cp "$BIN_DIR/MagSleep" "$APP/Contents/MacOS/MagSleep"
 cp "$BIN_DIR/magsleep-helper" "$APP/Contents/Resources/magsleep-helper"
 cp packaging/com.magsleep.helper.plist "$APP/Contents/Resources/"
 cp scripts/install-helper.sh scripts/uninstall-helper.sh \
     "$APP/Contents/Resources/"
+# Sparkle framework (SwiftPM puts it in the build bin dir; versioned bundle,
+# so preserve symlinks with cp -R). Signed ad-hoc along with the app below.
+cp -R "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/"
 chmod +x "$APP/Contents/Resources/"*.sh "$APP/Contents/Resources/magsleep-helper"
 
 sed -e "s/MAGSLEEP_VERSION/$VERSION/" -e "s/MAGSLEEP_BUILD/$BUILD_NUMBER/" \

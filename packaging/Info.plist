@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
+	<key>SUPublicEDKey</key>
+	<string>qfGrgwN+qci42o7CclVyik4bsfzHu8+jxCrF4ce2HTc=</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Abitbol</string>
 </dict>

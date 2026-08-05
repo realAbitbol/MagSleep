@@ -10,6 +10,9 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private var refreshTimer: Timer?
     private var configWatcher: DirectoryWatcher?
     private var wakeObserver: NSObjectProtocol?
+    /// Sparkle updater: handles "Check for Updates…" and the twice-a-day
+    /// automatic checks (replaces the former UpdateChecker + timer).
+    private let updateManager = UpdateManager()
 
     private let modeSleepItem = NSMenuItem()
     private let modeAlwaysOffItem = NSMenuItem()
@@ -26,6 +29,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         createStatusItem()
         startRefreshTimer()
         startConfigWatcher()
+        updateManager.start()
 
         // Defer startup prompts so modal alerts don't block
         // applicationDidFinishLaunching (which constructs this controller).
@@ -54,7 +58,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
                 let justManagedHelper = installed || updated
                 self.checkLaunchAtLoginPrompt()
                 self.checkDaemonRecovery(skip: justManagedHelper)
-                self.checkForUpdateOnLaunch()
+                // Sparkle manages automatic update checks (twice a day) on its
+                // own schedule after start(); nothing to do at startup here.
             }
         }
     }
@@ -123,15 +128,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
                 }
             } else {
                 completion(false)
-            }
-        }
-    }
-
-    private func checkForUpdateOnLaunch() {
-        UpdateChecker.latestVersion(force: false) { [weak self] latest in
-            guard let latest else { return }
-            DispatchQueue.main.async {
-                self?.presentUpdateResult(latest)
             }
         }
     }
@@ -343,30 +339,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     }
 
     @objc private func checkForUpdates() {
-        UpdateChecker.latestVersion(force: true) { [weak self] latest in
-            DispatchQueue.main.async {
-                self?.presentUpdateResult(latest)
-            }
-        }
-    }
-
-    private func presentUpdateResult(_ latest: String?) {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        if let latest {
-            alert.messageText = "MagSleep \(latest) is available"
-            alert.informativeText = "A newer version of MagSleep is available on GitHub."
-            alert.addButton(withTitle: "Download")
-            alert.addButton(withTitle: "Later")
-            if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(UpdateChecker.releasesPageURL)
-            }
-        } else {
-            alert.messageText = "MagSleep is up to date"
-            alert.informativeText = "You have the latest version of MagSleep."
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
+        // Sparkle's user-initiated check (shows its update UI).
+        updateManager.checkForUpdates()
     }
 
     /// Copies a support-friendly diagnostics block to the clipboard.

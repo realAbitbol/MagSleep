@@ -118,7 +118,7 @@ After that, sleep and wake are handled automatically even if you quit the menu b
 | **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
 | **Disabled** | Hand the LED back to macOS entirely |
 | **Launch at Login** | Start MagSleep when you log in |
-| **Check for Updates…** | Check GitHub Releases for a newer MagSleep |
+| **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
 | **Copy Diagnostics…** | Copy a support-ready status block to the clipboard |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
 | **Uninstall MagSleep…** | Full cleanup, then quit |

@@ -18,8 +18,17 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 TAG="v$VERSION"
+APP="dist/MagSleep.app"
 DMG="dist/MagSleep-$VERSION.dmg"
+ZIP="dist/MagSleep-$VERSION.zip"
 BRANCH="$(git branch --show-current)"
+
+# Locate Sparkle's appcast generator (built via SPM dependency).
+SPARKLE_BIN="$(dirname "$0")/../.build/artifacts/sparkle/Sparkle/bin"
+GENERATE_APPCAST="$SPARKLE_BIN/generate_appcast"
+if [ ! -x "$GENERATE_APPCAST" ]; then
+    GENERATE_APPCAST="$(command -v generate_appcast || true)"
+fi
 
 # 1. Sanity checks -----------------------------------------------------------
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
@@ -45,8 +54,30 @@ sed -i '' -E \
 # Makefile default so plain `make app`/`make dmg` build the new version
 sed -i '' -E "s/^VERSION \?= .*/VERSION ?= $VERSION/" Makefile
 
+# 3.5. Sparkle update archive + appcast --------------------------------------
+# The ZIP is what Sparkle downloads for in-app updates; the DMG stays for
+# human installs. The appcast (committed at appcast/appcast.xml, served from
+# GitHub raw) is regenerated with the new entry, EdDSA-signed from the login
+# keychain (generate_keys), and the enclosure URL pointed at the release asset.
+if [ -x "$GENERATE_APPCAST" ]; then
+    APPCAST_STAGE="dist/appcast-staging"
+    mkdir -p "$APPCAST_STAGE"
+    if [ -f appcast/appcast.xml ]; then
+        cp appcast/appcast.xml "$APPCAST_STAGE/appcast.xml"
+    fi
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+    cp "$ZIP" "$APPCAST_STAGE/"
+    ( cd "$APPCAST_STAGE" && "$GENERATE_APPCAST" . )
+    sed -i '' -E "s|url=\"MagSleep-$VERSION\.zip\"|url=\"https://github.com/realAbitbol/MagSleep/releases/download/$TAG/MagSleep-$VERSION.zip\"|" "$APPCAST_STAGE/appcast.xml"
+    mkdir -p appcast
+    cp "$APPCAST_STAGE/appcast.xml" appcast/appcast.xml
+    rm -rf "$APPCAST_STAGE"
+else
+    echo "warning: generate_appcast not found — Sparkle appcast not updated for $VERSION" >&2
+fi
+
 # 4. Commit + tag -----------------------------------------------------------
-git add README.md Makefile
+git add README.md Makefile appcast/appcast.xml
 if ! git diff --cached --quiet; then
     git commit -m "Release v$VERSION"
 fi
@@ -58,7 +89,7 @@ git push origin "$TAG"
 
 # 6. GitHub Release ---------------------------------------------------------
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    gh release create "$TAG" "$DMG" \
+    gh release create "$TAG" "$DMG" "$ZIP" \
         --repo realAbitbol/MagSleep \
         --title "MagSleep $VERSION" \
         --notes "MagSleep $VERSION — see the README for installation instructions."
@@ -67,4 +98,4 @@ else
     echo "warning: gh not available/authenticated — tag pushed, create the GitHub Release manually" >&2
 fi
 
-echo "released $TAG ($DMG)"
+echo "released $TAG ($DMG, $ZIP)"
