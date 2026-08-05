@@ -3,7 +3,7 @@
 # version references and the Makefile default, commits, tags, pushes branch +
 # tag to origin, and publishes a GitHub Release with the DMG attached.
 #
-# Usage: make release VERSION=1.0.8
+# Usage: make release VERSION=X.Y.Z
 #
 # Safe by design: refuses a dirty tree or an existing tag, never force-pushes,
 # and stops on any failure. Publish via `gh` degrades to a warning when gh is
@@ -36,8 +36,12 @@ make test
 make dmg VERSION="$VERSION"
 
 # 3. Update version references ----------------------------------------------
-# README "From source" examples: VERSION=1.0.x -> the new version
-sed -i '' -E "s/VERSION=1\.[0-9]+\.[0-9]+/VERSION=$VERSION/g" README.md
+# README "From source" examples (VERSION=1.0.x) and DMG filenames
+# (MagSleep-1.0.x.dmg, e.g. the Gatekeeper guide) to the new version.
+sed -i '' -E \
+    -e "s/VERSION=1\.[0-9]+\.[0-9]+/VERSION=$VERSION/g" \
+    -e "s/MagSleep-1\.[0-9]+\.[0-9]+\.dmg/MagSleep-$VERSION.dmg/g" \
+    README.md
 # Makefile default so plain `make app`/`make dmg` build the new version
 sed -i '' -E "s/^VERSION \?= .*/VERSION ?= $VERSION/" Makefile
 

@@ -148,8 +148,12 @@ final class PowerDaemon {
         guard let request = SocketRequest.parseLine(line) else {
             return SocketResponse(id: "", ok: false, config: nil, error: "malformed request").encodeLine()
         }
-        if let peerUID, !isAllowedPeer(peerUID) {
-            log.error("rejected request from uid \(peerUID, privacy: .public)")
+        guard let peerUID = peerUID, isAllowedPeer(peerUID) else {
+            if let peerUID {
+                log.error("rejected request from uid \(peerUID, privacy: .public)")
+            } else {
+                log.error("rejected request: could not determine peer uid")
+            }
             return SocketResponse(id: request.id, ok: false, config: nil, error: "unauthorized").encodeLine()
         }
         log.info("processing request: \(request.cmd, privacy: .public)")
@@ -166,14 +170,13 @@ final class PowerDaemon {
     }
 
     /// Accepts requests from root and from the current console user only.
-    /// Falls back to allowing when the console user cannot be determined (the
-    /// same exposure the legacy world-writable request file had).
+    /// Fails closed: an undeterminable console user rejects the request rather
+    /// than authorizing an arbitrary local process on the 0666 socket.
     private func isAllowedPeer(_ peerUID: uid_t) -> Bool {
         if peerUID == 0 { return true }
         var consoleUID: uid_t = 0
         var consoleGID: gid_t = 0
-        let consoleUser: CFString? = SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID)
-        guard consoleUser != nil else { return true }
+        guard SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) != nil else { return false }
         return peerUID == consoleUID
     }
 
@@ -286,6 +289,8 @@ final class PowerDaemon {
     private func onPowerSourceChange() {
         // Re-assert the active mode; macOS may change the LED on plug/unplug
         // (alwaysOff must win over the charging indicator).
+        // While disabled the LED belongs entirely to macOS — no SMC traffic.
+        guard config.enabled else { return }
         applyMode()
     }
 

@@ -20,7 +20,6 @@ enum UpdateChecker {
                 return
             }
         }
-        UserDefaults.standard.set(Date(), forKey: lastCheckKey)
 
         var request = URLRequest(url: latestReleaseURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -29,9 +28,13 @@ enum UpdateChecker {
             guard error == nil, let data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tag = json["tag_name"] as? String else {
+                // Only a *successful* check counts against the daily throttle,
+                // so a transient network failure doesn't suppress the next
+                // launch's automatic check.
                 completion(nil)
                 return
             }
+            UserDefaults.standard.set(Date(), forKey: lastCheckKey)
             let remote = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
             let local = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
             completion(SemanticVersion(remote) > SemanticVersion(local) ? remote : nil)

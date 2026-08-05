@@ -123,6 +123,11 @@ final class SocketServer {
         }
         clients.removeAll()
         unlink(path)
+        // Reset synchronously: the dispatch cancel handler runs asynchronously,
+        // and `start()` guards on `listenFD < 0`. Without this, stop()→start()
+        // (the self-heal rebind path) would no-op on the stale fd and the
+        // daemon would stop accepting IPC until restart.
+        listenFD = -1
         log.info("stopped")
     }
 
