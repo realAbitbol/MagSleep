@@ -62,7 +62,7 @@ Try these in order — stop as soon as one works:
 If the error happens while opening the DMG, unblock the DMG file first, then open it again:
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.0.dmg
+xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.1.dmg
 ```
 
 **Method D — remove the quarantine flag (most reliable)**
@@ -90,10 +90,10 @@ No output means the flag is gone and Gatekeeper will no longer block it.
 ```bash
 git clone <repo-url>
 cd MagSleep
-make app VERSION=1.2.0    # build dist/MagSleep.app
-make install VERSION=1.2.0  # copy to /Applications
+make app VERSION=1.2.1    # build dist/MagSleep.app
+make install VERSION=1.2.1  # copy to /Applications
 # or
-make dmg VERSION=1.2.0    # dist/MagSleep-1.2.0.dmg
+make dmg VERSION=1.2.1    # dist/MagSleep-1.2.1.dmg
 ```
 
 ## Notarization & distribution
