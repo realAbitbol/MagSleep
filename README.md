@@ -71,7 +71,7 @@ Try these in order — stop as soon as one works:
 If the error happens while opening the DMG, unblock the DMG file first, then open it again:
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.1.dmg
+xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.2.dmg
 ```
 
 **Method D — remove the quarantine flag (most reliable)**
@@ -156,10 +156,10 @@ If MagSleep keeps your nights a little darker, you can [buy me a coffee](https:/
 ```bash
 git clone <repo-url>
 cd MagSleep
-make app VERSION=1.2.1    # build dist/MagSleep.app
-make install VERSION=1.2.1  # copy to /Applications
+make app VERSION=1.2.2    # build dist/MagSleep.app
+make install VERSION=1.2.2  # copy to /Applications
 # or
-make dmg VERSION=1.2.1    # dist/MagSleep-1.2.1.dmg
+make dmg VERSION=1.2.2    # dist/MagSleep-1.2.2.dmg
 ```
 
 ## Build targets
