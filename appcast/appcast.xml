@@ -3,6 +3,25 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.5</title>
+            <pubDate>Wed, 05 Aug 2026 23:17:19 +0200</pubDate>
+            <sparkle:version>202608052317</sparkle:version>
+            <sparkle:shortVersionString>1.2.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Added
+
+- **Automation**: MagSleep is now scriptable from **Shortcuts** (App Intents: Set LED Mode, Turn LED Off, Turn LED On, Get LED Status) and **AppleScript** (`set led mode`, `turn LED off`, `turn LED on`, `get led status`) — both route through the same socket requests as the menu items
+- The menu bar menu now shows a **bold "MagSleep v1.2.5" header**
+
+### Changed
+
+- The mode→command mapping is now centralized once in `MagSleepCore.LEDMode` (shared by the menu, Shortcuts, and AppleScript) and pinned to the daemon's `RequestCommand` vocabulary, so the three surfaces can never drift
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.5/MagSleep-1.2.5.zip" length="2173760" type="application/octet-stream" sparkle:edSignature="Ik3eomb0XZe0eYQzmezyWCWi/Ikq+fsRwaotRRgXybXdpEB9qz3TriRRMQ4/zoNEjJTS+wLNzTr27ZaPGi8aBg=="/>
+        </item>
+        <item>
             <title>1.2.4</title>
             <pubDate>Wed, 05 Aug 2026 22:07:55 +0200</pubDate>
             <sparkle:version>202608052207</sparkle:version>
@@ -40,32 +59,6 @@
 - **Homebrew distribution** (cask + `realAbitbol/homebrew-tap` publishing): Homebrew is phasing out casks that require Gatekeeper overrides for unnotarized apps on September 1, 2026, so the DMG is the sole distribution channel
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.3/MagSleep-1.2.3.zip" length="2137393" type="application/octet-stream" sparkle:edSignature="tVWfNFTVAT3qbgoLb2zhHuKF+/dHbNh0Ck44G+u6lfKlg90FVQ6XNOKYMQBqe2wrpfrw3sZA69PqEVMS904hBg=="/>
-        </item>
-        <item>
-            <title>1.2.2</title>
-            <pubDate>Wed, 05 Aug 2026 15:53:00 +0200</pubDate>
-            <sparkle:version>202608051552</sparkle:version>
-            <sparkle:shortVersionString>1.2.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Removed
-
-- **Copy Diagnostics** menu item (and the now-unused SMC read APIs it relied on)
-- `SemanticVersion` from `MagSleepCore` (unused since Sparkle replaced the custom update checker)
-
-### Changed
-
-- Helper daemon entry point now uses `@main` instead of top-level code, so the
-  Periphery dead-code scan can trace the real entry point (previously it
-  reported the entire daemon as dead code)
-- Added a `.swiftlint.yml` and fixed all SwiftLint violations
-- Git **pre-commit hook** (`make install-hooks`): runs SwiftLint, Periphery,
-  `swift test`, and a warnings-as-errors build; commits are blocked if any fail
-- Test coverage expanded from 28 to 49 tests (config decode edge cases,
-  socket protocol malformed-input handling, SMC pure logic)
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.2/MagSleep-1.2.2.zip" length="2168563" type="application/octet-stream" sparkle:edSignature="0AgsX1t4HGKyUN7+CnQpj83WFA4eR2YLCZsdywl/sNOfCES7vwU4anxjS0F0ovN1hyY8T3ZwGSC6Uv0HOLD5BQ=="/>
         </item>
     </channel>
 </rss>
