@@ -36,7 +36,19 @@ Intel Macs are not supported.
 
 ## How to install
 
-### From a DMG (recommended)
+### Via Homebrew (recommended)
+
+Homebrew removes the quarantine flag automatically, so **no Gatekeeper override is needed**:
+
+```bash
+brew tap realAbitbol/tap
+brew trust --cask realabitbol/tap/magsleep   # Homebrew requires trusting third-party taps
+brew install --cask magsleep
+```
+
+First launch asks for your admin password once (to install the helper). Uninstalling: run **Uninstall MagSleep…** inside the app first (removes the privileged helper), then `brew uninstall --cask magsleep`.
+
+### From a DMG (alternative)
 
 1. Download the latest MagSleep DMG from the [Releases](https://github.com/realAbitbol/MagSleep/releases) page.
 2. Open the DMG and drag **MagSleep** into **Applications**.
@@ -113,6 +125,7 @@ That's it. Sleep and wake are handled automatically — the helper keeps running
 | **Disabled** | Hand the LED back to macOS entirely |
 | **Launch at Login** | Start MagSleep when you log in |
 | **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
+| **Report a Problem…** | Open the GitHub issue tracker with your app/helper versions pre-filled |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
 | **Uninstall MagSleep…** | Full cleanup, then quit |
 | **About MagSleep…** | App and helper version info |
@@ -168,6 +181,7 @@ make dmg VERSION=1.2.2    # dist/MagSleep-1.2.2.dmg
 |---------|--------|
 | `make app VERSION=x.y.z` | Build `dist/MagSleep.app` with that version |
 | `make dmg VERSION=x.y.z` | `dist/MagSleep-<version>.dmg` |
+| `make cask VERSION=x.y.z` | Update `Casks/magsleep.rb` with the version + DMG sha256 (run after `make dmg`) |
 | `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
 | `make run` | Build and open |
 | `make test` | Run the XCTest unit tests |
@@ -186,6 +200,8 @@ The version is written to the app's `Info.plist` and to the helper version file 
 - Refuses a dirty tree or an existing tag
 - Runs tests, builds the DMG and the Sparkle update ZIP
 - Updates the README/Makefile version references
+- Uses the released version's `CHANGELOG.md` section as the GitHub release body
+  and as the Sparkle update notes (write the changelog before releasing)
 - Regenerates and signs `appcast/appcast.xml` (Sparkle EdDSA), committing it
 - Commits, creates tag `vX.Y.Z`, pushes branch + tag
 - Publishes the GitHub Release with the DMG + ZIP attached

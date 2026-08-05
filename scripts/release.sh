@@ -98,8 +98,16 @@ else
     echo "warning: generate_appcast not found — Sparkle appcast not updated for $VERSION" >&2
 fi
 
+# 3.6. Homebrew cask ----------------------------------------------------------
+# Keep Casks/magsleep.rb in sync with the release (version + DMG sha256).
+if [ -f "$DMG" ]; then
+    scripts/build-cask.sh "$VERSION"
+else
+    echo "warning: $DMG not found — cask not updated" >&2
+fi
+
 # 4. Commit + tag -----------------------------------------------------------
-git add README.md Makefile appcast/appcast.xml
+git add README.md Makefile appcast/appcast.xml Casks/magsleep.rb
 if ! git diff --cached --quiet; then
     git commit -m "Release v$VERSION"
 fi
@@ -118,6 +126,38 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     echo "published GitHub release: https://github.com/realAbitbol/MagSleep/releases/tag/$TAG"
 else
     echo "warning: gh not available/authenticated — tag pushed, create the GitHub Release manually" >&2
+fi
+
+# 7. Homebrew tap ------------------------------------------------------------
+# Publish Casks/magsleep.rb to the realAbitbol/homebrew-tap repo (created on
+# first release) so `brew tap realAbitbol/tap && brew install --cask magsleep`
+# always serves the latest release. Best-effort: a failure here must not undo
+# an already-published release, so every failing step is wrapped in if-blocks
+# (a bare failing subshell would abort the script under set -e).
+TAP_REPO="realAbitbol/homebrew-tap"
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    TAP_TMP="dist/homebrew-tap"
+    rm -rf "$TAP_TMP"
+    if ! gh repo view "$TAP_REPO" >/dev/null 2>&1 \
+        && ! gh repo create "$TAP_REPO" --public --description "Homebrew tap for MagSleep" >/dev/null 2>&1; then
+        echo "warning: could not create $TAP_REPO — cask not published to Homebrew" >&2
+    elif gh repo clone "$TAP_REPO" "$TAP_TMP" >/dev/null 2>&1; then
+        mkdir -p "$TAP_TMP/Casks"
+        cp Casks/magsleep.rb "$TAP_TMP/Casks/magsleep.rb"
+        if ( cd "$TAP_TMP" \
+                && git add -A \
+                && { git diff --cached --quiet || git commit -m "Update MagSleep to $VERSION"; } \
+                && git push origin HEAD ); then
+            echo "published cask to $TAP_REPO"
+        else
+            echo "warning: could not publish cask to $TAP_REPO (git commit/push failed)" >&2
+        fi
+    else
+        echo "warning: could not clone $TAP_REPO — cask not published to Homebrew" >&2
+    fi
+    rm -rf "$TAP_TMP"
+else
+    echo "warning: gh not available/authenticated — cask not published to Homebrew" >&2
 fi
 
 echo "released $TAG ($DMG, $ZIP)"

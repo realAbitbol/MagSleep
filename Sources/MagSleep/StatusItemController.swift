@@ -13,6 +13,10 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     /// Sparkle updater: handles "Check for Updates…" and the twice-a-day
     /// automatic checks (replaces the former UpdateChecker + timer).
     private let updateManager = UpdateManager()
+    // periphery:ignore - retained for lifetime so the window stays alive;
+    // assigned in showOnboarding and cleared in its completion, never read.
+    /// First-run onboarding window (nil when not shown).
+    private var onboardingController: OnboardingWindowController?
 
     private let modeSleepItem = NSMenuItem()
     private let modeAlwaysOffItem = NSMenuItem()
@@ -50,13 +54,17 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
     private func runStartupChecks() {
         // Chain the checks so prompts never overlap and each runs against
-        // fresh state: install → helper upgrade → launch-at-login → recovery.
-        checkInstall { [weak self] installed in
+        // fresh state: install (onboarding window) → helper upgrade →
+        // launch-at-login → recovery.
+        checkInstall { [weak self] onboardingShown in
             guard let self else { return }
             self.checkUpgrade { [weak self] updated in
                 guard let self else { return }
-                let justManagedHelper = installed || updated
-                self.checkLaunchAtLoginPrompt()
+                let justManagedHelper = onboardingShown || updated
+                // The onboarding window already asked about Launch at Login.
+                if !onboardingShown {
+                    self.checkLaunchAtLoginPrompt()
+                }
                 self.checkDaemonRecovery(skip: justManagedHelper)
                 // Sparkle manages automatic update checks (twice a day) on its
                 // own schedule after start(); nothing to do at startup here.
@@ -64,13 +72,28 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         }
     }
 
-    /// Returns whether the user opted into installing the helper in this step.
+    /// Returns true when the first-run onboarding window was shown (it handles
+    /// helper install + mode + Launch at Login in one step).
     private func checkInstall(completion: @escaping (Bool) -> Void) {
         guard !helper.isInstalled else {
             completion(false)
             return
         }
-        showInstallPrompt(completion: completion)
+        showOnboarding(completion: completion)
+    }
+
+    private func showOnboarding(completion: @escaping (Bool) -> Void) {
+        // The onboarding window covers the Launch at Login question, so the
+        // standalone prompt must never fire afterwards.
+        UserDefaults.standard.set(true, forKey: "LaunchAtLoginPromptShown")
+        let controller = OnboardingWindowController(helper: helper) { [weak self] in
+            self?.onboardingController = nil
+            self?.updateMenuStates()
+            completion(true)
+        }
+        onboardingController = controller
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Returns whether the user opted into updating the helper in this step.
@@ -243,6 +266,12 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         updateItem.target = self
         menu.addItem(updateItem)
 
+        // Report a Problem
+        let reportItem = NSMenuItem(title: "Report a Problem…", action: #selector(reportProblem), keyEquivalent: "")
+        reportItem.image = NSImage(systemSymbolName: "ant", accessibilityDescription: nil)
+        reportItem.target = self
+        menu.addItem(reportItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // Buy me a coffee
@@ -335,6 +364,24 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     @objc private func checkForUpdates() {
         // Sparkle's user-initiated check (shows its update UI).
         updateManager.checkForUpdates()
+    }
+
+    /// Opens the GitHub issue tracker with the app/helper versions pre-filled.
+    @objc private func reportProblem() {
+        var components = URLComponents(string: "https://github.com/realAbitbol/MagSleep/issues/new")!
+        components.queryItems = [
+            URLQueryItem(name: "title", value: "MagSleep \(helper.appVersion) — "),
+            URLQueryItem(
+                name: "body",
+                value: "**App version:** \(helper.appVersion)\n"
+                    + "**Helper version:** \(helper.helperVersion ?? "not installed")\n"
+                    + "**Helper running:** \(helper.isLoaded)\n\n"
+                    + "## What happened?\n\n\n## What did you expect?\n\n"
+            ),
+        ]
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func uninstall() {

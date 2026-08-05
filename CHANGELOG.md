@@ -8,6 +8,21 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.3] - 2026-08-05
+
+### Added
+
+- **Homebrew cask**: MagSleep is now installable via `brew install --cask magsleep` (tap: `realAbitbol/homebrew-tap`); Homebrew is now the recommended install method — it clears the quarantine flag, so no Gatekeeper override is needed
+- **First-run onboarding window**: installs the helper, picks Sleep Mode vs Always Off, and sets Launch at Login in one step (replaces the plain install prompt)
+- **Report a Problem…** menu item: opens the GitHub issue tracker with app/helper versions pre-filled
+- `make cask VERSION=x.y.z` regenerates `Casks/magsleep.rb` with the new version and DMG sha256
+
+### Changed
+
+- `make release` now updates the Homebrew cask, publishes it to the `realAbitbol/homebrew-tap` tap, and uses the release's `CHANGELOG.md` section as the GitHub release body and Sparkle update notes
+- Tap-publishing failures degrade to warnings instead of aborting a release after the GitHub release was already published
+- Onboarding window: the close button finishes the flow, Launch at Login is registered only after the helper install succeeds, and the standalone Launch-at-Login prompt is suppressed once onboarding is shown
+
 ## [1.2.2] - 2026-08-05
 
 ### Removed

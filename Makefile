@@ -2,7 +2,7 @@ VERSION ?= 1.2.2
 
 APP = dist/MagSleep.app
 
-.PHONY: app dmg install run clean test notarize release lint install-hooks
+.PHONY: app dmg install run clean test notarize release lint install-hooks cask
 
 app:
 	scripts/build-app.sh $(VERSION)
@@ -52,3 +52,8 @@ notarize: $(APP)
 # scripts/release.sh.
 release:
 	scripts/release.sh $(VERSION)
+
+# Updates Casks/magsleep.rb with the version + DMG sha256 (run after
+# `make dmg VERSION=x.y.z`).
+cask:
+	scripts/build-cask.sh $(VERSION)
