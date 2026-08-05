@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>MagSleep</title>
+        <item>
+            <title>1.2.0</title>
+            <pubDate>Wed, 05 Aug 2026 14:45:41 +0200</pubDate>
+            <sparkle:version>202608051447</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.0/MagSleep-1.2.0.zip" length="2182465" type="application/octet-stream" sparkle:edSignature="tmF9llSpVBwwMzzgwmKwx5HB9w9Agrz+SvxO06NGpX+vqW+0kj+a1655MVeyzMOsSXXCtBMo5vF/0PzEDeyaCw=="/>
+        </item>
+    </channel>
+</rss>
