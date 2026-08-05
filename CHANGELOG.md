@@ -13,6 +13,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Changed
 
 - Every release DMG is now uploaded to **VirusTotal** before publishing: the verdict appears as a README badge and as a proof line in this changelog (requires the `VIRUSTOTAL_API_KEY` environment variable; the scan is skipped with a warning when it's absent)
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/ecac361ef84760f969ecac169989f67aa763ecfdcde89586b70838c80a7912b1/detection)
 
 ## [1.2.7] - 2026-08-05
 

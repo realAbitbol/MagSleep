@@ -3,6 +3,21 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.8</title>
+            <pubDate>Thu, 06 Aug 2026 00:00:45 +0200</pubDate>
+            <sparkle:version>202608052359</sparkle:version>
+            <sparkle:shortVersionString>1.2.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Changed
+
+- Every release DMG is now uploaded to **VirusTotal** before publishing: the verdict appears as a README badge and as a proof line in this changelog (requires the `VIRUSTOTAL_API_KEY` environment variable; the scan is skipped with a warning when it's absent)
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/ecac361ef84760f969ecac169989f67aa763ecfdcde89586b70838c80a7912b1/detection)
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.8/MagSleep-1.2.8.zip" length="2149967" type="application/octet-stream" sparkle:edSignature="An5Btv5IULWwVFGZ43cJQ6rb8BmqT1hx65IaURjz5ktpq6TyEf8PN4a5PtvBoVnPGMQ27v64AF9xcqmVaWMZBQ=="/>
+        </item>
+        <item>
             <title>1.2.7</title>
             <pubDate>Wed, 05 Aug 2026 23:34:48 +0200</pubDate>
             <sparkle:version>202608052334</sparkle:version>
@@ -33,25 +48,6 @@
 - **Shortcuts (App Intents)**: the SwiftPM build path cannot emit the AppIntents metadata (`Metadata.appintents`) the Shortcuts app requires, so the actions never appeared — the code was removed rather than shipped dead. **AppleScript remains the automation surface** (fully supported and verified)
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.6/MagSleep-1.2.6.zip" length="2149886" type="application/octet-stream" sparkle:edSignature="FAa4SSBRKpI9GTN+cnhJuj6cnzX7h8gClcp7V2QARAb3ddrSv54qy+5UBXwOjQfv86KuP8DCCKrX4hybU0BIAw=="/>
-        </item>
-        <item>
-            <title>1.2.5</title>
-            <pubDate>Wed, 05 Aug 2026 23:17:19 +0200</pubDate>
-            <sparkle:version>202608052317</sparkle:version>
-            <sparkle:shortVersionString>1.2.5</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Added
-
-- **Automation**: MagSleep is now scriptable from **Shortcuts** (App Intents: Set LED Mode, Turn LED Off, Turn LED On, Get LED Status) and **AppleScript** (`set led mode`, `turn LED off`, `turn LED on`, `get led status`) — both route through the same socket requests as the menu items
-- The menu bar menu now shows a **bold "MagSleep v1.2.5" header**
-
-### Changed
-
-- The mode→command mapping is now centralized once in `MagSleepCore.LEDMode` (shared by the menu, Shortcuts, and AppleScript) and pinned to the daemon's `RequestCommand` vocabulary, so the three surfaces can never drift
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.5/MagSleep-1.2.5.zip" length="2173760" type="application/octet-stream" sparkle:edSignature="Ik3eomb0XZe0eYQzmezyWCWi/Ikq+fsRwaotRRgXybXdpEB9qz3TriRRMQ4/zoNEjJTS+wLNzTr27ZaPGi8aBg=="/>
         </item>
     </channel>
 </rss>
