@@ -8,6 +8,16 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.6] - 2026-08-05
+
+### Changed
+
+- The menu bar **version header is no longer greyed** (bold, normal text color)
+
+### Removed
+
+- **Shortcuts (App Intents)**: the SwiftPM build path cannot emit the AppIntents metadata (`Metadata.appintents`) the Shortcuts app requires, so the actions never appeared — the code was removed rather than shipped dead. **AppleScript remains the automation surface** (fully supported and verified)
+
 ## [1.2.5] - 2026-08-05
 
 ### Added

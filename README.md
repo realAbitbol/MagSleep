@@ -121,9 +121,7 @@ That's it. Sleep and wake are handled automatically — the helper keeps running
 
 ## Automation
 
-MagSleep is scriptable from **Shortcuts** and **AppleScript** — both go through the same socket requests as the menu items, so no helper reinstall is involved.
-
-**Shortcuts** (macOS 13+): the app provides **Set LED Mode**, **Turn LED Off**, **Turn LED On**, and **Get LED Status** actions — open the Shortcuts app, add a MagSleep action, and use it in any shortcut or automation.
+MagSleep is scriptable from **AppleScript** — it goes through the same socket requests as the menu items, so no helper reinstall is involved. (Shortcuts/App Intents were removed in v1.2.6: the SwiftPM build path can't emit the AppIntents metadata the Shortcuts app requires.)
 
 **AppleScript** (e.g. in Script Editor):
 
