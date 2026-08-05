@@ -36,6 +36,18 @@ cp scripts/install-helper.sh scripts/uninstall-helper.sh \
 cp -R "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/"
 chmod +x "$APP/Contents/Resources/"*.sh "$APP/Contents/Resources/magsleep-helper"
 
+# Helper revision: the last commit that touched helper-affecting code (the
+# helper binary, the shared core it links, its LaunchDaemon plist, or the
+# install script). The app compares the revision written at install time
+# against this to decide whether to reinstall — so the unchanged helper is
+# never reinstalled on a plain app update. "unknown" (no git, e.g. a tarball
+# build) keeps the legacy always-reinstall behavior.
+HELPER_REV="$(git log -1 --format=%h -- Sources/MagSleepHelper Sources/MagSleepCore packaging scripts/install-helper.sh 2>/dev/null || true)"
+if [ -z "$HELPER_REV" ]; then
+    HELPER_REV="unknown"
+fi
+printf '%s' "$HELPER_REV" > "$APP/Contents/Resources/helper-revision.txt"
+
 sed -e "s/MAGSLEEP_VERSION/$VERSION/" -e "s/MAGSLEEP_BUILD/$BUILD_NUMBER/" \
     packaging/Info.plist > "$APP/Contents/Info.plist"
 

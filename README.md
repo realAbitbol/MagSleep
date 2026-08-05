@@ -113,10 +113,10 @@ That's it. Sleep and wake are handled automatically — the helper keeps running
 | **Disabled** | Hand the LED back to macOS entirely |
 | **Launch at Login** | Start MagSleep when you log in |
 | **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
-| **Report a Problem…** | Open the GitHub issue tracker with your app/helper versions pre-filled |
+| **Report a Problem…** | Open the GitHub issue tracker with your app version + helper revision pre-filled |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
 | **Uninstall MagSleep…** | Full cleanup, then quit |
-| **About MagSleep…** | App and helper version info |
+| **About MagSleep…** | App version and helper status |
 | **Quit MagSleep** | Quit the menu bar UI (the helper keeps running if enabled) |
 
 ## How to update
@@ -178,7 +178,7 @@ make dmg VERSION=1.2.3    # dist/MagSleep-1.2.3.dmg
 | `make release VERSION=x.y.z` | Full release: test, build DMG, update versions, commit, tag, push, publish GitHub Release + Sparkle appcast |
 | `make clean` | Remove `.build` and `dist` |
 
-The version is written to the app's `Info.plist` and to the helper version file on install; launching an app whose version differs from the installed helper triggers an "Update Helper" prompt.
+The app version is written to the app's `Info.plist`; the **helper revision** (last commit touching helper-affecting code) is written to the helper version file on install. Launching an app whose helper revision differs from the installed helper's triggers an "Update Helper" prompt — so an unchanged helper is not reinstalled on a plain app update.
 
 ## Release process
 

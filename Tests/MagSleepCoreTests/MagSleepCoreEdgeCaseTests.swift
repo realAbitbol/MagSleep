@@ -216,3 +216,25 @@ final class ConstantsEdgeCaseTests: XCTestCase {
         XCTAssertEqual(MagSleep.coffeeURL.host, "ko-fi.com")
     }
 }
+
+final class HelperVersioningTests: XCTestCase {
+    func testMatchingRevisionDoesNotReinstall() {
+        XCTAssertFalse(HelperVersioning.shouldReinstall(installedRevision: "e2e22d7", bundledRevision: "e2e22d7"))
+    }
+
+    func testMismatchedRevisionReinstalls() {
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: "e2e22d7", bundledRevision: "deadbee"))
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: "1.2.3", bundledRevision: "e2e22d7"))
+    }
+
+    func testMissingOrEmptyRevisionReinstalls() {
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: nil, bundledRevision: "e2e22d7"))
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: "", bundledRevision: "e2e22d7"))
+    }
+
+    func testUnknownBundledRevisionStillCompares() {
+        // No-git builds embed "unknown"; an installed "unknown" then matches.
+        XCTAssertFalse(HelperVersioning.shouldReinstall(installedRevision: "unknown", bundledRevision: "unknown"))
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedRevision: "e2e22d7", bundledRevision: "unknown"))
+    }
+}

@@ -376,7 +376,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             URLQueryItem(
                 name: "body",
                 value: "**App version:** \(helper.appVersion)\n"
-                    + "**Helper version:** \(helper.helperVersion ?? "not installed")\n"
+                    + "**Helper revision:** \(helper.helperVersion ?? "not installed")\n"
                     + "**Helper running:** \(helper.isLoaded)\n\n"
                     + "## What happened?\n\n\n## What did you expect?\n\n"
             ),
@@ -416,7 +416,12 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
     @objc private func showAbout() {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        let helperVersion = helper.helperVersion ?? "not installed"
+        let helperStatus: String
+        switch helper.helperIsCurrent {
+        case .some(true): helperStatus = "Yes"
+        case .some(false): helperStatus = "No"
+        case .none: helperStatus = "not installed"
+        }
         let alert = NSAlert()
         alert.messageText = "MagSleep \(appVersion)"
         alert.alertStyle = .informational
@@ -434,7 +439,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         body.append(NSAttributedString(
             string: "A tiny menu bar app that turns off the MagSafe LED on sleep and restores it on wake — "
                 + "or keeps it off completely in Always Off mode.\n\n"
-                + "Application version: \(appVersion)\nHelper version: \(helperVersion)\n\n"
+                + "Application version: \(appVersion)\nHelper up to date: \(helperStatus)\n\n"
                 + "Made with ♥️ by Abitbol\n\n",
             attributes: [.paragraphStyle: centered]
         ))

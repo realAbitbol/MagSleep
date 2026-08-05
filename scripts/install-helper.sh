@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs the MagSleep privileged helper. Runs as root, invoked by the app.
-# Usage: install-helper.sh <app-resources-dir> <console-user> [app-version]
+# Usage: install-helper.sh <app-resources-dir> <console-user> [helper-revision]
 set -euo pipefail
 
 RESOURCES="$1"
@@ -9,7 +9,7 @@ BIN="/Library/PrivilegedHelperTools/$LABEL"
 PLIST="/Library/LaunchDaemons/$LABEL.plist"
 LOG_DIR="/Library/Logs/MagSleep"
 CONFIG_DIR="/Library/Preferences/MagSleep"
-APP_VERSION="${3:-unknown}"
+HELPER_REVISION="${3:-unknown}"
 LOCK_FILE="$CONFIG_DIR/install.lock"
 
 # Serialize installs with lockf(1) (the recommended macOS lock utility). The
@@ -56,12 +56,13 @@ install -m 644 -o root -g wheel "$RESOURCES/$LABEL.plist" "$PLIST"
 plutil -lint "$PLIST" >/dev/null || { echo "installed helper plist is invalid" >&2; exit 1; }
 
 # Bootstrap with retries. Each attempt re-bootouts first so a half-unloaded
-# previous job can never conflict with the new one. The version file is written
-# only after a successful bootstrap, so a failed install keeps the previous
-# version on disk and the app re-prompts the update on the next launch.
+# previous job can never conflict with the new one. The revision file is
+# written only after a successful bootstrap, so a failed install keeps the
+# previous revision on disk and the app re-prompts the update on the next
+# launch.
 for attempt in 1 2 3; do
     if launchctl bootstrap system "$PLIST" 2>/dev/null; then
-        echo "$APP_VERSION" > "$CONFIG_DIR/helper-version.txt"
+        echo "$HELPER_REVISION" > "$CONFIG_DIR/helper-version.txt"
         chown root:wheel "$CONFIG_DIR/helper-version.txt"
         chmod 644 "$CONFIG_DIR/helper-version.txt"
         echo "MagSleep helper installed"

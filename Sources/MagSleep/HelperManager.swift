@@ -126,25 +126,53 @@ final class HelperManager {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
-    /// Version of the installed helper (nil if not installed).
+    /// Revision of the installed helper (nil if not installed). This is the
+    /// **helper revision** (last commit touching helper-affecting code) that
+    /// install-helper.sh wrote at install time, not the app version.
     var helperVersion: String? {
         guard isInstalled else { return nil }
         return try? String(contentsOfFile: MagSleep.helperVersionFilePath, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Returns true if the installed helper version differs from the app version.
-    var needsUpgrade: Bool {
-        guard isInstalled else { return false }
-        return helperVersion != appVersion
+    /// Revision of the helper bundled with this app, embedded by build-app.sh
+    /// (see scripts/build-app.sh). "unknown" when git was unavailable at build
+    /// time, which keeps the legacy always-reinstall behavior.
+    private var helperRevision: String {
+        guard let path = Bundle.main.path(forResource: "helper-revision", ofType: "txt"),
+              let revision = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return "unknown"
+        }
+        return revision.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Installs or re-installs the helper with the current app version (needs admin).
-    /// Keeps `isInstalling` true through the post-install connection
-    /// confirmation so the UI shows the hourglass until the daemon answers.
+    /// Whether the installed helper matches the one bundled with this app
+    /// (nil when the helper is not installed).
+    var helperIsCurrent: Bool? {
+        guard isInstalled else { return nil }
+        return !HelperVersioning.shouldReinstall(
+            installedRevision: helperVersion,
+            bundledRevision: helperRevision
+        )
+    }
+
+    /// Returns true if the installed helper revision differs from the one this
+    /// app bundles — i.e. the helper actually changed and must be reinstalled.
+    var needsUpgrade: Bool {
+        guard isInstalled else { return false }
+        return HelperVersioning.shouldReinstall(
+            installedRevision: helperVersion,
+            bundledRevision: helperRevision
+        )
+    }
+
+    /// Installs or re-installs the helper with the bundled helper revision
+    /// (needs admin). Keeps `isInstalling` true through the post-install
+    /// connection confirmation so the UI shows the hourglass until the daemon
+    /// answers.
     func install(completion: @escaping (Bool) -> Void) {
         isInstalling = true
-        runPrivilegedScript(named: "install-helper.sh", args: [appVersion]) { [weak self] success in
+        runPrivilegedScript(named: "install-helper.sh", args: [helperRevision]) { [weak self] success in
             guard let self else { return }
             if success {
                 self.isConfirmingConnection = true
@@ -209,12 +237,14 @@ final class HelperManager {
     // MARK: - Enable / Disable (via socket, no admin)
 
     func enable(completion: @escaping (Bool) -> Void) {
-        let version = appVersion
+        // The install script records the bundled helper revision (not the app
+        // version) so an unchanged helper is never reported as outdated.
+        let revision = helperRevision
         // If helper is not installed at all, need privileged install
         guard isInstalled else {
             // Fall through to privileged install
             isInstalling = true
-            runPrivilegedScript(named: "install-helper.sh", args: [version]) { [weak self] success in
+            runPrivilegedScript(named: "install-helper.sh", args: [revision]) { [weak self] success in
                 guard let self else { return }
                 if success {
                     self.isConfirmingConnection = true
@@ -231,7 +261,7 @@ final class HelperManager {
         // If helper is installed but not loaded, try to bootstrap it (needs admin)
         guard isLoaded else {
             isInstalling = true
-            runPrivilegedScript(named: "install-helper.sh", args: [version]) { [weak self] success in
+            runPrivilegedScript(named: "install-helper.sh", args: [revision]) { [weak self] success in
                 guard let self else { return }
                 if success {
                     self.isConfirmingConnection = true
