@@ -90,10 +90,10 @@ No output means the flag is gone and Gatekeeper will no longer block it.
 ```bash
 git clone <repo-url>
 cd MagSleep
-make app VERSION=1.0.5    # build dist/MagSleep.app
-make install VERSION=1.0.5  # copy to /Applications
+make app VERSION=1.1.0    # build dist/MagSleep.app
+make install VERSION=1.1.0  # copy to /Applications
 # or
-make dmg VERSION=1.0.5    # dist/MagSleep-1.0.5.dmg
+make dmg VERSION=1.1.0    # dist/MagSleep-1.0.5.dmg
 ```
 
 ## Notarization & distribution
