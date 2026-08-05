@@ -36,19 +36,7 @@ Intel Macs are not supported.
 
 ## How to install
 
-### Via Homebrew (recommended)
-
-Homebrew removes the quarantine flag automatically, so **no Gatekeeper override is needed**:
-
-```bash
-brew tap realAbitbol/tap
-brew trust --cask realabitbol/tap/magsleep   # Homebrew requires trusting third-party taps
-brew install --cask magsleep
-```
-
-First launch asks for your admin password once (to install the helper). Uninstalling: run **Uninstall MagSleep…** inside the app first (removes the privileged helper), then `brew uninstall --cask magsleep`.
-
-### From a DMG (alternative)
+### From a DMG
 
 1. Download the latest MagSleep DMG from the [Releases](https://github.com/realAbitbol/MagSleep/releases) page.
 2. Open the DMG and drag **MagSleep** into **Applications**.
@@ -181,7 +169,6 @@ make dmg VERSION=1.2.2    # dist/MagSleep-1.2.2.dmg
 |---------|--------|
 | `make app VERSION=x.y.z` | Build `dist/MagSleep.app` with that version |
 | `make dmg VERSION=x.y.z` | `dist/MagSleep-<version>.dmg` |
-| `make cask VERSION=x.y.z` | Update `Casks/magsleep.rb` with the version + DMG sha256 (run after `make dmg`) |
 | `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
 | `make run` | Build and open |
 | `make test` | Run the XCTest unit tests |

@@ -12,16 +12,18 @@ it for the GitHub release body and the in-app Sparkle update notes.
 
 ### Added
 
-- **Homebrew cask**: MagSleep is now installable via `brew install --cask magsleep` (tap: `realAbitbol/homebrew-tap`); Homebrew is now the recommended install method — it clears the quarantine flag, so no Gatekeeper override is needed
-- **First-run onboarding window**: installs the helper, picks Sleep Mode vs Always Off, and sets Launch at Login in one step (replaces the plain install prompt)
+- **First-run onboarding window**: installs the helper, picks Sleep Mode vs Always Off, and sets Launch at Login in one step. Modern macOS layout — app-icon header, tappable mode cards, and a Launch-at-Login switch. Onboarding is mandatory: the app cannot function without the helper, so the only ways out are installing it or **Cancel & Quit** (a declined admin prompt shows an in-window error and lets the user retry)
 - **Report a Problem…** menu item: opens the GitHub issue tracker with app/helper versions pre-filled
-- `make cask VERSION=x.y.z` regenerates `Casks/magsleep.rb` with the new version and DMG sha256
 
 ### Changed
 
-- `make release` now updates the Homebrew cask, publishes it to the `realAbitbol/homebrew-tap` tap, and uses the release's `CHANGELOG.md` section as the GitHub release body and Sparkle update notes
-- Tap-publishing failures degrade to warnings instead of aborting a release after the GitHub release was already published
-- Onboarding window: the close button finishes the flow, Launch at Login is registered only after the helper install succeeds, and the standalone Launch-at-Login prompt is suppressed once onboarding is shown
+- The menu no longer shows a redundant greyed status line at the top — state is conveyed by the menu bar icon and the mode checkmarks
+- The mode checkmark now reflects the persisted config immediately at launch (previously it stayed unchecked until the 15s refresh timer fired when the helper was healthy)
+- `make release` uses the release's `CHANGELOG.md` section as the GitHub release body and Sparkle update notes
+
+### Removed
+
+- **Homebrew distribution** (cask + `realAbitbol/homebrew-tap` publishing): Homebrew is phasing out casks that require Gatekeeper overrides for unnotarized apps on September 1, 2026, so the DMG is the sole distribution channel
 
 ## [1.2.2] - 2026-08-05
 

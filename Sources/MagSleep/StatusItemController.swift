@@ -13,9 +13,9 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     /// Sparkle updater: handles "Check for Updates…" and the twice-a-day
     /// automatic checks (replaces the former UpdateChecker + timer).
     private let updateManager = UpdateManager()
-    // periphery:ignore - retained for lifetime so the window stays alive;
-    // assigned in showOnboarding and cleared in its completion, never read.
-    /// First-run onboarding window (nil when not shown).
+    /// First-run onboarding window (nil when not shown). Retained for lifetime
+    /// while the window is up; read by the re-show guard and cleared in the
+    /// completion, never read for its value.
     private var onboardingController: OnboardingWindowController?
 
     private let modeSleepItem = NSMenuItem()
@@ -66,6 +66,11 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
                     self.checkLaunchAtLoginPrompt()
                 }
                 self.checkDaemonRecovery(skip: justManagedHelper)
+                // Reflect the persisted config immediately. When the helper is
+                // installed and running, none of the checks above update the
+                // menu, so the mode checkmarks would otherwise stay off until
+                // the 15s fallback timer or the config-directory watch fires.
+                self.updateMenuStates()
                 // Sparkle manages automatic update checks (twice a day) on its
                 // own schedule after start(); nothing to do at startup here.
             }
@@ -86,6 +91,9 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // The onboarding window covers the Launch at Login question, so the
         // standalone prompt must never fire afterwards.
         UserDefaults.standard.set(true, forKey: "LaunchAtLoginPromptShown")
+        // Onboarding is mandatory — never stack a second window (e.g. a mode
+        // menu click while the window is already up).
+        guard onboardingController == nil else { return }
         let controller = OnboardingWindowController(helper: helper) { [weak self] in
             self?.onboardingController = nil
             self?.updateMenuStates()
@@ -218,12 +226,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private func createMenu() {
         let menu = NSMenu()
 
-        // Status label
-        let statusItem = NSMenuItem(title: helper.statusTitle, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
-        menu.addItem(NSMenuItem.separator())
-
         // Mode items (checkmark shows the current mode)
         modeSleepItem.title = "Sleep Mode"
         modeSleepItem.toolTip = "Turn LED off on sleep, restore on wake"
@@ -304,7 +306,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
     @objc private func setSleepMode() {
         guard helper.isInstalled else {
-            showInstallPrompt(completion: { _ in })
+            showOnboarding(completion: { _ in })
             return
         }
         helper.setMode(.sleep) { [weak self] success in
@@ -319,7 +321,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
     @objc private func setAlwaysOffMode() {
         guard helper.isInstalled else {
-            showInstallPrompt(completion: { _ in })
+            showOnboarding(completion: { _ in })
             return
         }
         helper.setMode(.alwaysOff) { [weak self] success in
@@ -485,9 +487,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // Update status icon + tooltip
         statusItem?.button?.image = statusImage()
         statusItem?.button?.toolTip = helper.statusTitle
-        if let statusItem = menu?.item(at: 0) {
-            statusItem.title = helper.statusTitle
-        }
 
         // Update mode selection
         if !helper.isEnabled {
@@ -534,29 +533,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     }
 
     // MARK: - Prompts
-
-    private func showInstallPrompt(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Install MagSleep Helper"
-        alert.informativeText = "MagSleep requires a helper to control the MagSafe LED. Would you like to install it now?"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Cancel")
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            helper.enable { [weak self] success in
-                guard let self else { completion(true); return }
-                if success {
-                    self.updateMenuStates()
-                } else {
-                    self.handleHelperFailure("Failed to install helper")
-                }
-                completion(true)
-            }
-        } else {
-            completion(false)
-        }
-    }
 
     private func showLaunchAtLoginPrompt() {
         // SMAppService.mainApp can't register a login item for a bundle that

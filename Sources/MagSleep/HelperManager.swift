@@ -18,6 +18,10 @@ final class HelperManager {
     /// True after a post-install confirmation timed out (daemon unreachable).
     private(set) var connectionFailed = false
     var lastError: String?
+    /// True when the last privileged attempt ended because the user cancelled
+    /// the admin password prompt (distinct from a real failure — `lastError`
+    /// is nil in both cases).
+    private(set) var lastAttemptWasCancelled = false
 
     /// How often to re-probe the socket while confirming a fresh install.
     private let connectionConfirmInterval: TimeInterval = 1.0
@@ -331,6 +335,9 @@ final class HelperManager {
     private func runPrivilegedScript(named scriptName: String,
                                      args: [String] = [],
                                      completion: @escaping (Bool) -> Void) {
+        // Each attempt starts fresh so a cancel can't be confused with a
+        // stale error from a previous attempt.
+        lastAttemptWasCancelled = false
         guard let scriptPath = Bundle.main.path(forResource: scriptName, ofType: nil),
               let resourcePath = Bundle.main.resourcePath else {
             lastError = "Helper resources missing; run the built MagSleep.app bundle."
@@ -397,6 +404,7 @@ final class HelperManager {
                     self.refresh()
                     if process.terminationStatus == 0 {
                         self.lastError = nil
+                        self.lastAttemptWasCancelled = false
                         completion(true)
                     } else {
                         // The user cancelling the auth prompt is not an error.
@@ -411,6 +419,7 @@ final class HelperManager {
                         self.lastError = isCancel
                             ? nil
                             : (message.isEmpty ? "Helper script failed." : message)
+                        self.lastAttemptWasCancelled = isCancel
                         completion(false)
                     }
                 }
