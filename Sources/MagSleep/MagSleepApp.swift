@@ -13,8 +13,8 @@ enum MagSleepMain {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var helper: HelperManager!
-    private var statusItemController: StatusItemController!
+    private lazy var helper = HelperManager()
+    private lazy var statusItemController = StatusItemController(helper: helper)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if !arch(arm64)
@@ -27,10 +27,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showUnsupportedAlert(
                 message: "This Mac does not expose MagSafe LED control (ACLC). MagSleep requires an Apple Silicon MacBook with MagSafe 3."
             )
+            NSApp.terminate(nil)
+            return
         }
 
-        helper = HelperManager()
-        statusItemController = StatusItemController(helper: helper)
+        // Force initialization of helper and statusItem
+        _ = statusItemController
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Quitting the app must not touch the helper's state — the daemon keeps
+        // running in the active mode (README: "the helper keeps running if
+        // enabled"). The LED is restored to macOS control by the daemon's own
+        // shutdown path (SIGTERM → .system). Only explicit Uninstall/Disable
+        // actions change the helper state.
+        return .terminateNow
     }
 
     private func showUnsupportedAlert(message: String) {

@@ -7,10 +7,13 @@ LABEL="com.magsleep.helper"
 BIN="/Library/PrivilegedHelperTools/$LABEL"
 PLIST="/Library/LaunchDaemons/$LABEL.plist"
 LOG_DIR="/Library/Logs/MagSleep"
+CONFIG_DIR="/Library/Preferences/MagSleep"
 
 launchctl bootout "system/$LABEL" 2>/dev/null || true
 [ -x "$BIN" ] && "$BIN" --reset || true
 
 rm -f "$BIN" "$PLIST"
 rm -rf "$LOG_DIR"
+rm -rf "$CONFIG_DIR"
+rm -rf /tmp/magsleep
 echo "MagSleep helper removed"

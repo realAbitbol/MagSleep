@@ -1,58 +1,24 @@
 import Foundation
 import IOKit
 import IOKit.pwr_mgt
+import IOKit.ps
 import MagSleepCore
-import os
+import os.log
 
-/// magsleep-helper — root launchd daemon.
+/// magsleep-helper: privileged daemon that controls the MagSafe LED.
+/// Runs as root via LaunchDaemon.
 ///
-/// Turns the MagSafe LED off when the Mac goes to sleep, and hands control
-/// back to macOS on wake.
+/// Behavior:
+/// - Turns the MagSafe LED off when the Mac sleeps, restores macOS control on wake
+/// - Watches the request directory for commands from the app (event-driven,
+///   no polling): mode changes apply within milliseconds
+/// - Re-asserts the active mode on power-source changes (covers alwaysOff
+///   across plug-in / charging-state updates)
+/// - Honors config.enabled: when false, LED is under macOS control, events ignored
+/// - Falls back to DaemonConfig.default on startup if config is missing or corrupt
 ///
-/// Flags:
-///   --reset   write ACLC = 0 and exit (used by disable/uninstall)
-///   --off     write ACLC = 1 and exit (sanity check)
-///   --probe   print whether this Mac exposes ACLC
-
-let log = Logger(subsystem: "com.magsleep.helper", category: "helper")
-
-if CommandLine.arguments.contains("--reset") {
-    do {
-        try MagSafeLED.set(.system)
-        print("MagSafe LED handed back to macOS")
-        exit(0)
-    } catch {
-        print("reset failed: \(error)")
-        exit(1)
-    }
-}
-
-if CommandLine.arguments.contains("--off") {
-    do {
-        try MagSafeLED.set(.off)
-        print("MagSafe LED off")
-        exit(0)
-    } catch {
-        print("off failed: \(error)")
-        exit(1)
-    }
-}
-
-if CommandLine.arguments.contains("--probe") {
-    do {
-        let info = try SMC.keyInfo(MagSafeLED.key)
-        print("ACLC present: size=\(info.size) type=\(info.type)")
-        if let color = try MagSafeLED.current() {
-            print("current: \(color)")
-        } else {
-            print("current: unrecognized byte")
-        }
-    } catch {
-        print("ACLC probe failed: \(error)")
-        exit(1)
-    }
-    exit(0)
-}
+/// Invoked with --reset: restores the LED to macOS control and exits.
+/// Used by uninstall-helper.sh / disable-helper.sh.
 
 /// IOKit power message IDs (C macros are not imported into Swift).
 /// Values from IOMessage.h via `iokit_common_msg(...)`.
@@ -63,31 +29,231 @@ private enum PowerMessage {
 }
 
 final class PowerDaemon {
+    private let log = Logger(subsystem: "com.magsleep.helper", category: "daemon")
+    private var config = DaemonConfig.default
+    private var isSleeping = false
+    private var requestFileLastModified: TimeInterval = 0
+
     private var rootPort: io_connect_t = 0
-    private var notifierObject: io_object_t = 0
     private var notificationPort: IONotificationPortRef?
+    private var notifierObject: io_object_t = 0
     private var signalSources: [DispatchSourceSignal] = []
+    private var requestDirSource: DispatchSourceFileSystemObject?
+    private var powerSourceSource: CFRunLoopSource?
+    private var reassertTimer: Timer?
 
     func run() {
-        log.info("magsleep-helper starting")
-        installSignalHandlers()
+        log.info("starting")
+
+        // Ensure config and request directories exist
+        ensureConfigDirectory()
+        ensureRequestDirectory()
+
+        // Load config (or fall back to defaults)
+        loadConfig()
+
+        // Seed the sleep state for the rare case where we're revived (launchd
+        // KeepAlive) while the Mac is still asleep; power events keep it
+        // accurate afterwards.
+        isSleeping = isSystemSleeping()
+
+        // Set up signal handlers and system power notifications
+        setupSignalHandlers()
         registerForPowerNotifications()
+
+        // Watch the request directory and power source changes (event-driven)
+        armRequestDirectoryWatch()
+        registerForPowerSourceChanges()
+
+        // Process any request written before we started watching
+        processRequestFile()
+
+        // Slow re-assert timer: guarantees the LED converges back to the active
+        // mode within a few seconds even if macOS changes it after our
+        // event-driven writes (e.g. plug/unplug flips the LED to show charging).
+        // A single-byte SMC write every 3s is negligible; mode-change latency is
+        // unaffected (requests are still applied instantly via the directory
+        // watch).
+        startReassertTimer()
+
+        // Run the run loop; all events fire here.
         RunLoop.main.run()
     }
 
-    private func installSignalHandlers() {
-        for sig in [SIGTERM, SIGINT] {
-            signal(sig, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler {
-                log.info("shutting down; handing LED back to macOS")
-                try? MagSafeLED.set(.system)
-                exit(0)
-            }
-            source.resume()
-            signalSources.append(source)
+    // MARK: - Config
+
+    private func ensureConfigDirectory() {
+        let dir = MagSleep.configDirectory
+        if !FileManager.default.fileExists(atPath: dir) {
+            try? FileManager.default.createDirectory(
+                atPath: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o755]
+            )
         }
     }
+
+    private func ensureRequestDirectory() {
+        // World-writable so the user-space app can write requests without admin.
+        try? FileManager.default.createDirectory(
+            atPath: MagSleep.requestDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o777]
+        )
+    }
+
+    private func loadConfig() {
+        let url = URL(fileURLWithPath: MagSleep.configFilePath)
+        var loaded = DaemonConfig.default
+        let exists = FileManager.default.fileExists(atPath: url.path)
+
+        if exists {
+            do {
+                let data = try Data(contentsOf: url)
+                loaded = try PropertyListDecoder().decode(DaemonConfig.self, from: data)
+            } catch {
+                log.error("failed to load config: \(error)")
+                loaded = DaemonConfig.default
+            }
+        }
+
+        config = loaded
+        log.info("config loaded: mode=\(self.config.mode.rawValue), enabled=\(self.config.enabled)")
+
+        // Persist the initial state so the app (which runs as a user) can read
+        // the current mode/enabled even if no request has been sent yet.
+        if !exists {
+            saveConfig(config)
+        }
+
+        // If disabled on startup, restore LED to macOS
+        if !config.enabled {
+            try? MagSafeLED.set(.system)
+            log.info("started disabled, LED under macOS control")
+        }
+    }
+
+    private func saveConfig(_ config: DaemonConfig) {
+        do {
+            let encoder = PropertyListEncoder()
+            encoder.outputFormat = .xml
+            let data = try encoder.encode(config)
+            // Atomic write so a concurrent reader (the app's refresh timer)
+            // never observes a partially-written plist.
+            try data.write(to: URL(fileURLWithPath: MagSleep.configFilePath), options: .atomic)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: MagSleep.configFilePath
+            )
+        } catch {
+            log.error("failed to save config: \(error)")
+        }
+    }
+
+    // MARK: - Request File (event-driven via directory watch)
+
+    private func armRequestDirectoryWatch() {
+        let fd = open(MagSleep.requestDirectory, O_EVTONLY)
+        guard fd >= 0 else {
+            log.error("cannot watch request directory (errno \(errno))")
+            return
+        }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .rename, .delete, .extend],
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            self?.processRequestFile()
+            // The app writes the request atomically (temp file + rename). If the
+            // watch fires before the rename completes we may read an empty file;
+            // re-check shortly after so the request is not silently dropped.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self?.processRequestFile()
+            }
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        source.resume()
+        requestDirSource = source
+        log.info("watching request directory")
+    }
+
+    private func processRequestFile() {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: MagSleep.requestFilePath) else {
+            return
+        }
+
+        guard let mtime = attributes[.modificationDate] as? Date,
+              mtime.timeIntervalSince1970 > requestFileLastModified else {
+            return
+        }
+
+        guard let command = try? String(contentsOfFile: MagSleep.requestFilePath, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !command.isEmpty else {
+            return
+        }
+
+        log.info("processing request: \(command)")
+        requestFileLastModified = mtime.timeIntervalSince1970
+
+        switch command {
+        case "mode:sleep":
+            config.mode = .sleep
+            config.enabled = true
+            saveConfig(config)
+            applyMode()
+        case "mode:alwaysOff":
+            config.mode = .alwaysOff
+            config.enabled = true
+            saveConfig(config)
+            applyMode()
+        case "enable":
+            config.enabled = true
+            saveConfig(config)
+            applyMode()
+        case "disable":
+            config.enabled = false
+            saveConfig(config)
+            applyMode()
+            log.info("disabled, LED under macOS control")
+        default:
+            log.error("unknown request: \(command)")
+        }
+
+        // Remove the request file only if it hasn't been replaced since we read
+        // it — otherwise we'd delete a newer request before it was processed.
+        if let current = try? FileManager.default.attributesOfItem(atPath: MagSleep.requestFilePath),
+           let currentMtime = current[.modificationDate] as? Date,
+           currentMtime.timeIntervalSince1970 == mtime.timeIntervalSince1970 {
+            try? FileManager.default.removeItem(atPath: MagSleep.requestFilePath)
+        }
+    }
+
+    // MARK: - Mode Application
+
+    /// Computes the desired LED color and writes it. Called on sleep/wake events,
+    /// on requests, and on power-source changes (to re-assert alwaysOff across
+    /// external LED changes like plug-in / charging-state updates).
+    private func applyMode() {
+        let target: MagSafeLED.Color
+        if !config.enabled {
+            target = .system
+        } else {
+            switch config.mode {
+            case .sleep:
+                target = isSleeping ? .off : .system
+            case .alwaysOff:
+                target = .off
+            }
+        }
+
+        try? MagSafeLED.set(target)
+    }
+
+    // MARK: - Power Notifications (event-driven sleep/wake detection)
 
     private func registerForPowerNotifications() {
         let callback: IOServiceInterestCallback = { refcon, _, messageType, messageArgument in
@@ -118,29 +284,113 @@ final class PowerDaemon {
 
         switch messageType {
         case PowerMessage.canSystemSleep:
+            // Acknowledge so the system can proceed to sleep.
             IOAllowPowerChange(rootPort, notificationID)
 
         case PowerMessage.systemWillSleep:
-            log.info("system will sleep; MagSafe LED off")
-            do {
-                try MagSafeLED.set(.off)
-            } catch {
-                log.error("failed to turn LED off: \(String(describing: error), privacy: .public)")
-            }
+            log.info("system will sleep; turning MagSafe LED off")
+            isSleeping = true
+            applyMode()
             IOAllowPowerChange(rootPort, notificationID)
 
         case PowerMessage.systemHasPoweredOn:
             log.info("system woke; handing MagSafe LED back to macOS")
-            do {
-                try MagSafeLED.set(.system)
-            } catch {
-                log.error("failed to restore LED: \(String(describing: error), privacy: .public)")
-            }
+            isSleeping = false
+            applyMode()
 
         default:
             break
         }
     }
+
+    // MARK: - Power Source Changes (event-driven alwaysOff re-assert)
+
+    private func registerForPowerSourceChanges() {
+        let callback: IOPowerSourceCallbackType = { context in
+            guard let context else { return }
+            let daemon = Unmanaged<PowerDaemon>.fromOpaque(context).takeUnretainedValue()
+            daemon.onPowerSourceChange()
+        }
+
+        guard let source = IOPSNotificationCreateRunLoopSource(
+            callback,
+            Unmanaged.passUnretained(self).toOpaque()
+        )?.takeRetainedValue() else {
+            log.error("failed to register for power source changes")
+            return
+        }
+        powerSourceSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+        log.info("registered for power source changes")
+    }
+
+    private func onPowerSourceChange() {
+        // Re-assert the active mode; macOS may change the LED on plug/unplug
+        // (alwaysOff must win over the charging indicator).
+        applyMode()
+    }
+
+    // MARK: - Signal Handlers
+
+    private func setupSignalHandlers() {
+        // Use dispatch signal sources (not raw signal()) so the handler runs
+        // in a normal dispatch context where IOKit/SMC calls are safe.
+        let queue = DispatchQueue.main
+        for signo in [SIGINT, SIGTERM] {
+            signal(signo, SIG_IGN) // suppress default termination; source handles it
+            let source = DispatchSource.makeSignalSource(signal: signo, queue: queue)
+            source.setEventHandler { [weak self] in
+                self?.shutdown()
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
+
+    /// Restore LED to macOS control and exit non-zero so launchd's KeepAlive
+    /// ({ SuccessfulExit: false }) revives the daemon whenever it is killed.
+    /// Sequence on `launchctl kill`: LED returns to macOS control for a few
+    /// seconds, launchd restarts the daemon, and it re-applies the active mode.
+    /// bootout during install/uninstall unloads the job regardless of exit
+    /// code, so those flows still stop it permanently.
+    private func shutdown() {
+        log.info("shutting down, restoring LED to macOS control")
+        try? MagSafeLED.set(.system)
+        exit(1)
+    }
+
+    // MARK: - Re-assert Timer
+
+    private func startReassertTimer() {
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            self?.applyMode()
+        }
+        RunLoop.main.add(timer, forMode: .default)
+        reassertTimer = timer
+    }
+
+    // MARK: - Sleep/Wake Detection (startup seed only)
+
+    /// Heuristic used once at startup to seed `isSleeping` (covers the case
+    /// where launchd revives us while the Mac is still asleep). Not used for
+    /// ongoing detection — that comes from IORegisterForSystemPower events.
+    private func isSystemSleeping() -> Bool {
+        let sleepFile = "/private/var/vm/sleepimage"
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: sleepFile) else {
+            return false
+        }
+        guard let mtime = attributes[.modificationDate] as? Date else {
+            return false
+        }
+        // If sleepimage was modified recently (within last 30 seconds), consider system sleeping
+        return Date().timeIntervalSince(mtime) < 30
+    }
+}
+
+// One-shot: restore the LED to macOS control and exit (uninstall/disable path).
+if CommandLine.arguments.contains("--reset") {
+    try? MagSafeLED.set(.system)
+    exit(0)
 }
 
 PowerDaemon().run()

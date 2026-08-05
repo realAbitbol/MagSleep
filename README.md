@@ -5,6 +5,7 @@
 # MagSleep
 
 A tiny macOS menu bar app that turns off your MagSafe LED when the MacBook sleeps, and hands it back to macOS when it wakes.
+Or to turn it off completely.
 
 Perfect for a dark bedroom: no green/amber glow from the charger while you sleep.
 
@@ -28,46 +29,46 @@ Intel Macs are not supported.
 
 ### From a DMG
 
-1. Download [HERE](https://github.com/realAbitbol/MagSleep/releases/download/v1.0.1/MagSleep-1.0.1.dmg)
-2. Open `MagSleep-1.0.1.dmg` and drag **MagSleep** into **Applications**. (if you get an error see below)
-3. Launch MagSleep (it will appear as a moon icon in the menu bar).
-4. Click on the menu bar icon
-5. Choose **Enable MagSleep…** and enter your admin password.
-
+1. Download the latest MagSleep DMG from the [Releases](https://github.com/realAbitbol/MagSleep/releases) page.
+2. Open the DMG and drag **MagSleep** into **Applications**.
+3. Launch MagSleep (it will appear as an icon in the menu bar).
+4. Click the menu bar icon and choose **Sleep Mode** (or **Always Off**) — this installs the helper and asks for your admin password once.
 
 > [!IMPORTANT]
-> The app isn't notarized so if Gatekeeper blocks the unsigned build you can:
+> The app isn't notarized, so if Gatekeeper blocks the unsigned build you can:
 > - Right-click the app → **Open**. (unlikely to work on Tahoe)
-> - If above fails open the terminal and run `xattr -dr com.apple.quarantine /Applications/MagSleep.app`
+> - If that fails, open the terminal and run `xattr -dr com.apple.quarantine /Applications/MagSleep.app`
 
 ### From source
 
 ```bash
 git clone <repo-url>
 cd MagSleep
-make run          # build + open
+make app VERSION=1.0.5    # build dist/MagSleep.app
+make install VERSION=1.0.5  # copy to /Applications
 # or
-make install      # copy to /Applications
-make dmg          # dist/MagSleep-<version>.dmg
+make dmg VERSION=1.0.5    # dist/MagSleep-1.0.5.dmg
 ```
 
 ## First-time setup
 
 1. Open MagSleep from the menu bar.
-2. **Enable MagSleep…** — installs a small root helper (one admin prompt).
+2. Choose a mode (**Sleep Mode** or **Always Off**) — this installs the small root helper (one admin prompt).
 3. Optionally turn on **Launch at Login**.
 
-After that, sleep and wake are handled automatically even if you quit the menu bar app — as long as the helper stays enabled.
+After that, sleep and wake are handled automatically even if you quit the menu bar app — as long as the helper stays enabled. Quitting the app does **not** disable the helper; it keeps running in the mode you chose.
 
 ## What the menu does
 
 | Item | Action |
 |------|--------|
-| **Enable MagSleep** | Install / load the helper |
-| **Disable MagSleep** | Stop the helper; restore the LED to macOS; keep files for a quick re-enable |
-| **Uninstall MagSleep…** | Full cleanup, then quit |
+| **Sleep Mode** | LED off while the Mac sleeps, restored to macOS on wake |
+| **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
+| **Disabled** | Hand the LED back to macOS entirely |
 | **Launch at Login** | Start MagSleep when you log in |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
+| **Uninstall MagSleep…** | Full cleanup, then quit |
+| **About MagSleep…** | App and helper version info |
 | **Quit MagSleep** | Quit the menu bar UI (the helper keeps running if enabled) |
 
 ## How it works
@@ -77,12 +78,14 @@ Mac goes to sleep  →  helper writes ACLC = 1  →  MagSafe LED off
 Mac wakes up       →  helper writes ACLC = 0  →  macOS controls the LED again
 ```
 
-MagSleep is a lightweight AppKit menu bar app plus a LaunchDaemon. The daemon listens for system power events (`IORegisterForSystemPower`) and writes the MagSafe LED SMC key `ACLC`. Root is required for SMC writes, which is why Enable asks for your password once.
+MagSleep is a lightweight AppKit menu bar app plus a privileged LaunchDaemon. The daemon is fully event-driven: it watches the request directory (`/tmp/magsleep/`) for mode changes, listens for system power events (`IORegisterForSystemPower`), and reacts to power-source changes (`IOPS`) so **Always Off** stays off even when you plug in or unplug the charger. It writes the MagSafe LED SMC key `ACLC`; root is required for SMC writes, which is why the first mode selection asks for your password once.
 
 | `ACLC` | Meaning |
 |--------|---------|
 | `0` | System control (amber / green as usual) |
 | `1` | Off |
+| `3` | Green |
+| `4` | Amber |
 
 MagSafe LED control is undocumented. A macOS or firmware update may change or break it.
 
@@ -99,20 +102,22 @@ sudo launchctl bootout system/com.magsleep.helper 2>/dev/null || true
 sudo /Library/PrivilegedHelperTools/com.magsleep.helper --reset 2>/dev/null || true
 sudo rm -f /Library/PrivilegedHelperTools/com.magsleep.helper
 sudo rm -f /Library/LaunchDaemons/com.magsleep.helper.plist
+sudo rm -rf /Library/Preferences/MagSleep
 sudo rm -rf /Library/Logs/MagSleep
+sudo rm -rf /tmp/magsleep
 ```
 
 ## Build targets
 
 | Command | Result |
 |---------|--------|
-| `make app` | `dist/MagSleep.app` |
-| `make dmg` | `dist/MagSleep-<version>.dmg` |
-| `make install` | Copy app to `/Applications` |
+| `make app VERSION=x.y.z` | Build `dist/MagSleep.app` with that version |
+| `make dmg VERSION=x.y.z` | `dist/MagSleep-<version>.dmg` |
+| `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
 | `make run` | Build and open |
 | `make clean` | Remove `.build` and `dist` |
 
-Override the version with `make dmg VERSION=1.0.1`.
+The version is written to the app's `Info.plist` and to the helper version file on install; launching an app whose version differs from the installed helper triggers an "Update Helper" prompt.
 
 ## Support ☕
 

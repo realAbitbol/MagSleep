@@ -11,12 +11,22 @@
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<true/>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
 	<key>ProcessType</key>
 	<string>Background</string>
 	<key>StandardOutPath</key>
 	<string>/Library/Logs/MagSleep/helper.log</string>
 	<key>StandardErrorPath</key>
 	<string>/Library/Logs/MagSleep/helper.log</string>
+	<key>SoftResourceLimits</key>
+	<dict>
+		<key>core</key>
+		<integer>0</integer>
+		<key>filesize</key>
+		<integer>10485760</integer>
+	</dict>
 </dict>
 </plist>

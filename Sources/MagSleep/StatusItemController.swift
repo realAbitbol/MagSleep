@@ -3,172 +3,386 @@ import MagSleepCore
 
 final class StatusItemController: NSObject {
     private let helper: HelperManager
-    private let statusItem: NSStatusItem
+    private var statusItem: NSStatusItem?
+    private var menu: NSMenu?
     private var refreshTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+
+    private let modeSleepItem = NSMenuItem()
+    private let modeAlwaysOffItem = NSMenuItem()
+    private let modeDisabledItem = NSMenuItem()
+
+    private let launchAtLoginItem = NSMenuItem()
 
     init(helper: HelperManager) {
         self.helper = helper
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
-        if let button = statusItem.button {
-            button.image = Self.menuBarImage()
-            button.image?.isTemplate = true
-            button.toolTip = "MagSleep"
-        }
+        setupObservers()
+        createMenu()
+        createStatusItem()
+        startRefreshTimer()
 
-        rebuildMenu()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            self?.helper.refresh()
-            self?.rebuildMenu()
+        // Defer startup prompts so modal alerts don't block
+        // applicationDidFinishLaunching (which constructs this controller).
+        DispatchQueue.main.async { [weak self] in
+            self?.runStartupChecks()
         }
     }
 
-    private static func menuBarImage() -> NSImage {
-        if let image = NSImage(systemSymbolName: "moon.zzz",
-                               accessibilityDescription: "MagSleep") {
-            return image
+    private func runStartupChecks() {
+        // Check if helper needs to be installed
+        if !helper.isInstalled {
+            showInstallPrompt()
         }
-        let image = NSImage(size: NSSize(width: 18, height: 18))
-        image.lockFocus()
-        NSColor.labelColor.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 4, y: 4, width: 10, height: 10)).fill()
-        image.unlockFocus()
-        image.isTemplate = true
+
+        // Check if installed helper is outdated. If the user chose "Quit",
+        // stop here — no further dialogs or actions.
+        if helper.isInstalled && helper.needsUpgrade {
+            guard showUpdateHelperPrompt() else { return }
+        }
+
+        // Check if launch-at-login preference has been set
+        if !UserDefaults.standard.bool(forKey: "LaunchAtLoginPromptShown") {
+            UserDefaults.standard.set(true, forKey: "LaunchAtLoginPromptShown")
+            showLaunchAtLoginPrompt()
+        }
+
+        // Restart the helper on launch if it's installed but not running
+        // (e.g. after an external kill). Deliberately "Disabled" helpers stay
+        // disabled — we only recover daemon liveness, never override the user's
+        // enabled state. Skip while an install/update is already in flight to
+        // avoid a second privileged install racing the first.
+        if helper.isInstalled && !helper.isLoaded && !helper.isInstalling {
+            helper.enable() { [weak self] _ in
+                self?.updateMenuStates()
+            }
+        }
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        if let observer = wakeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        statusItem = nil
+        menu = nil
+    }
+
+    private func setupObservers() {
+        wakeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshHelperState()
+        }
+    }
+
+    private func createStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.menu = menu
+        statusItem = item
+
+        if let button = item.button {
+            button.image = statusImage()
+            button.toolTip = helper.statusTitle
+        }
+    }
+
+    /// Menu bar icon reflecting the current mode/state.
+    private func statusImage() -> NSImage? {
+        let symbolName: String
+        if helper.isInstalling {
+            symbolName = "hourglass"
+        } else if !helper.isInstalled {
+            symbolName = "exclamationmark.triangle"
+        } else if !helper.isLoaded {
+            symbolName = "exclamationmark.triangle"
+        } else if !helper.isEnabled {
+            symbolName = "circle.slash"
+        } else {
+            switch helper.mode {
+            case .sleep: symbolName = "moon.zzz"
+            case .alwaysOff: symbolName = "bolt.slash"
+            }
+        }
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: helper.statusTitle)
+        image?.isTemplate = true
         return image
     }
 
-    private func rebuildMenu() {
-        helper.refresh()
+    private func createMenu() {
         let menu = NSMenu()
-        menu.autoenablesItems = false
 
-        let status = NSMenuItem(title: helper.statusTitle, action: nil, keyEquivalent: "")
-        status.isEnabled = false
-        menu.addItem(status)
-        menu.addItem(.separator())
+        // Status label
+        let statusItem = NSMenuItem(title: helper.statusTitle, action: nil, keyEquivalent: "")
+        statusItem.isEnabled = false
+        menu.addItem(statusItem)
+        menu.addItem(NSMenuItem.separator())
 
-        if helper.isLoaded {
-            let disable = NSMenuItem(
-                title: "Disable MagSleep",
-                action: #selector(disableMagSleep),
-                keyEquivalent: ""
-            )
-            disable.target = self
-            menu.addItem(disable)
-        } else {
-            let enable = NSMenuItem(
-                title: helper.isInstalled ? "Enable MagSleep" : "Enable MagSleep…",
-                action: #selector(enableMagSleep),
-                keyEquivalent: ""
-            )
-            enable.target = self
-            menu.addItem(enable)
-        }
+        // Mode items (checkmark shows the current mode)
+        modeSleepItem.title = "Sleep Mode"
+        modeSleepItem.toolTip = "Turn LED off on sleep, restore on wake"
+        modeSleepItem.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: nil)
+        modeSleepItem.target = self
+        modeSleepItem.action = #selector(setSleepMode)
+        menu.addItem(modeSleepItem)
 
-        let uninstall = NSMenuItem(
-            title: "Uninstall MagSleep…",
-            action: #selector(uninstallMagSleep),
-            keyEquivalent: ""
-        )
-        uninstall.target = self
-        uninstall.isEnabled = helper.isInstalled || helper.isLoaded
-        menu.addItem(uninstall)
+        modeAlwaysOffItem.title = "Always Off"
+        modeAlwaysOffItem.toolTip = "Keep LED off at all times"
+        modeAlwaysOffItem.image = NSImage(systemSymbolName: "bolt.slash", accessibilityDescription: nil)
+        modeAlwaysOffItem.target = self
+        modeAlwaysOffItem.action = #selector(setAlwaysOffMode)
+        menu.addItem(modeAlwaysOffItem)
 
-        menu.addItem(.separator())
+        modeDisabledItem.title = "Disabled"
+        modeDisabledItem.toolTip = "Let macOS control the LED"
+        modeDisabledItem.image = NSImage(systemSymbolName: "circle.slash", accessibilityDescription: nil)
+        modeDisabledItem.target = self
+        modeDisabledItem.action = #selector(setDisabledMode)
+        menu.addItem(modeDisabledItem)
 
-        let login = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin),
-            keyEquivalent: ""
-        )
-        login.target = self
-        login.state = helper.launchesAtLogin ? .on : .off
-        menu.addItem(login)
+        menu.addItem(NSMenuItem.separator())
 
-        let coffee = NSMenuItem(
-            title: "Buy me a coffee",
-            action: #selector(buyCoffee),
-            keyEquivalent: ""
-        )
-        coffee.target = self
-        menu.addItem(coffee)
+        // Launch at Login
+        launchAtLoginItem.title = "Launch at Login"
+        launchAtLoginItem.toolTip = "Start MagSleep automatically at login"
+        launchAtLoginItem.target = self
+        launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
+        launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
+        menu.addItem(launchAtLoginItem)
+        menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(.separator())
+        // Buy me a coffee
+        let coffeeItem = NSMenuItem(title: "Buy me a coffee", action: #selector(openCoffee), keyEquivalent: "")
+        coffeeItem.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil)
+        coffeeItem.target = self
+        menu.addItem(coffeeItem)
 
-        let quit = NSMenuItem(
-            title: "Quit MagSleep",
-            action: #selector(quit),
-            keyEquivalent: "q"
-        )
-        quit.target = self
-        menu.addItem(quit)
+        // Uninstall
+        let uninstallItem = NSMenuItem(title: "Uninstall MagSleep", action: #selector(uninstall), keyEquivalent: "")
+        uninstallItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        uninstallItem.target = self
+        menu.addItem(uninstallItem)
 
-        statusItem.menu = menu
+        // About
+        let aboutItem = NSMenuItem(title: "About MagSleep…", action: #selector(showAbout), keyEquivalent: "")
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Quit
+        let quitItem = NSMenuItem(title: "Quit MagSleep", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        self.menu = menu
     }
 
-    @objc private func enableMagSleep() {
-        helper.enable { [weak self] success in
-            guard let self else { return }
-            self.rebuildMenu()
-            if !success, let error = self.helper.lastError {
-                self.showAlert(title: "Could not enable MagSleep", message: error)
-            }
+    @objc private func setSleepMode() {
+        guard helper.isInstalled else {
+            showInstallPrompt()
+            return
         }
-    }
-
-    @objc private func disableMagSleep() {
-        helper.disable { [weak self] success in
-            guard let self else { return }
-            self.rebuildMenu()
-            if !success, let error = self.helper.lastError {
-                self.showAlert(title: "Could not disable MagSleep", message: error)
-            }
-        }
-    }
-
-    @objc private func uninstallMagSleep() {
-        let alert = NSAlert()
-        alert.messageText = "Uninstall MagSleep?"
-        alert.informativeText = "This removes the privileged helper, restores MagSafe LED control to macOS, and turns off Launch at Login. MagSleep will quit afterwards — you can delete MagSleep.app yourself."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Uninstall")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        helper.uninstall { [weak self] success in
-            guard let self else { return }
+        helper.setMode(.sleep) { [weak self] success in
             if success {
-                NSApp.terminate(nil)
+                self?.updateMenuStates()
             } else {
-                self.rebuildMenu()
-                if let error = self.helper.lastError {
-                    self.showAlert(title: "Could not uninstall MagSleep", message: error)
-                }
+                self?.showError("Failed to set sleep mode")
+            }
+        }
+    }
+
+    @objc private func setAlwaysOffMode() {
+        guard helper.isInstalled else {
+            showInstallPrompt()
+            return
+        }
+        helper.setMode(.alwaysOff) { [weak self] success in
+            if success {
+                self?.updateMenuStates()
+            } else {
+                self?.showError("Failed to set always off mode")
+            }
+        }
+    }
+
+    @objc private func setDisabledMode() {
+        helper.disable { [weak self] success in
+            if success {
+                self?.updateMenuStates()
+            } else {
+                self?.showError("Failed to disable")
             }
         }
     }
 
     @objc private func toggleLaunchAtLogin() {
         do {
-            try helper.setLaunchesAtLogin(!helper.launchesAtLogin)
-            rebuildMenu()
+            let newState = !helper.launchesAtLogin
+            try helper.setLaunchesAtLogin(newState)
+            launchAtLoginItem.state = newState ? .on : .off
         } catch {
-            showAlert(title: "Launch at Login", message: error.localizedDescription)
+            showError("Failed to change launch at login setting: \(error.localizedDescription)")
         }
     }
 
-    @objc private func buyCoffee() {
+    @objc private func openCoffee() {
         NSWorkspace.shared.open(MagSleep.coffeeURL)
+    }
+
+    @objc private func uninstall() {
+        let alert = NSAlert()
+        alert.messageText = "Uninstall MagSleep"
+        alert.informativeText = "This will remove the helper and restore the MagSafe LED to macOS control. This action cannot be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Uninstall")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        helper.uninstall { [weak self] success in
+            if success {
+                NSApp.terminate(nil)
+            } else {
+                self?.showError("Failed to uninstall MagSleep")
+            }
+        }
     }
 
     @objc private func quit() {
         NSApp.terminate(nil)
     }
 
-    private func showAlert(title: String, message: String) {
+    @objc private func showAbout() {
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let helperVersion = helper.helperVersion ?? "not installed"
         let alert = NSAlert()
-        alert.messageText = title
+        alert.messageText = "MagSleep \(appVersion)"
+        alert.informativeText = """
+        A tiny menu bar app that turns off the MagSafe LED on sleep and restores it on wake — or keeps it off completely in Always Off mode.
+
+        Application version: \(appVersion)
+        Helper version: \(helperVersion)
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    // MARK: - UI Updates
+
+    private func updateMenuStates() {
+        // Update status icon + tooltip
+        statusItem?.button?.image = statusImage()
+        statusItem?.button?.toolTip = helper.statusTitle
+        if let statusItem = menu?.item(at: 0) {
+            statusItem.title = helper.statusTitle
+        }
+
+        // Update mode selection
+        if !helper.isEnabled {
+            modeSleepItem.state = .off
+            modeAlwaysOffItem.state = .off
+            modeDisabledItem.state = .on
+        } else {
+            modeDisabledItem.state = .off
+            switch helper.mode {
+            case .sleep:
+                modeSleepItem.state = .on
+                modeAlwaysOffItem.state = .off
+            case .alwaysOff:
+                modeSleepItem.state = .off
+                modeAlwaysOffItem.state = .on
+            }
+        }
+
+        // Update launch at login
+        launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
+    }
+
+    private func refreshHelperState() {
+        helper.refresh()
+        updateMenuStates()
+    }
+
+    private func startRefreshTimer() {
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            self?.refreshHelperState()
+        }
+    }
+
+    // MARK: - Prompts
+
+    private func showInstallPrompt() {
+        let alert = NSAlert()
+        alert.messageText = "Install MagSleep Helper"
+        alert.informativeText = "MagSleep requires a helper to control the MagSafe LED. Would you like to install it now?"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            helper.enable() { [weak self] success in
+                if success {
+                    self?.updateMenuStates()
+                } else {
+                    self?.showError("Failed to install helper")
+                }
+            }
+        }
+    }
+
+    private func showLaunchAtLoginPrompt() {
+        let alert = NSAlert()
+        alert.messageText = "Launch at Login?"
+        alert.informativeText = "Launch MagSleep at login so it can manage your MagSafe LED automatically?"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Yes")
+        alert.addButton(withTitle: "No")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            do {
+                try helper.setLaunchesAtLogin(true)
+                launchAtLoginItem.state = .on
+            } catch {
+                // Silently fail; user can enable manually
+            }
+        }
+    }
+
+    /// Returns false if the user chose "Quit" (so remaining startup checks are skipped).
+    private func showUpdateHelperPrompt() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Outdated Helper Detected"
+        alert.informativeText = "The installed helper is outdated. MagSleep requires the helper to be updated to function properly."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Update Helper")
+        alert.addButton(withTitle: "Quit")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            helper.install() { [weak self] success in
+                if !success {
+                    self?.showError("Failed to update helper")
+                    NSApp.terminate(nil)
+                } else {
+                    self?.refreshHelperState()
+                }
+            }
+            return true
+        } else {
+            NSApp.terminate(nil)
+            return false
+        }
+    }
+
+    private func showError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "MagSleep"
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
