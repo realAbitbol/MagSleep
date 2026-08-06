@@ -8,6 +8,13 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.2.9] - 2026-08-05
+
+### Fixed
+
+- Helper install failing with "bootstrap attempt N failed; retrying" (reported by a fresh-install user): `install-helper.sh` now strips quarantine/provenance xattrs from the installed daemon binary, guarantees a valid ad-hoc signature (re-signing it if a copy path disturbed it), retries with a longer settle, and — most importantly — surfaces **launchctl's real error and exit code** so any future failure is diagnosable instead of a generic retry message
+- The Sleep Mode card in the onboarding window was cut off ("LED off while the Mac / sleeps, back on when you…"): the card subtitles now wrap up to 3 lines with the correct measurement width, and the cards are slightly taller
+
 ## [1.2.8] - 2026-08-05
 
 ### Changed

@@ -51,25 +51,45 @@ install -m 755 -o root -g wheel "$RESOURCES/magsleep-helper" "$BIN"
 install -m 644 -o root -g wheel "$RESOURCES/$LABEL.plist" "$PLIST"
 
 # Validate before handing the job to launchd, so a broken install fails with a
-# clear message instead of a cryptic bootstrap EIO.
+# clear message instead of a cryptic bootstrap error.
 [ -x "$BIN" ] || { echo "installed helper binary is not executable" >&2; exit 1; }
 plutil -lint "$PLIST" >/dev/null || { echo "installed helper plist is invalid" >&2; exit 1; }
+
+# Some copy paths (e.g. the app dragged out of a downloaded DMG) can leave a
+# quarantine/provenance xattr on bundle contents; launchd is strict about such
+# xattrs when validating a daemon, so strip them from the installed files.
+xattr -dr com.apple.quarantine "$BIN" "$PLIST" 2>/dev/null || true
+xattr -dr com.apple.provenance "$BIN" "$PLIST" 2>/dev/null || true
+
+# Guarantee a valid ad-hoc signature on the installed binary: launchd validates
+# the signature at bootstrap, and re-signing as root here repairs any signature
+# a copy path or xattr handling may have disturbed.
+if ! codesign -v "$BIN" 2>/dev/null; then
+    echo "installed helper binary failed signature validation; re-signing" >&2
+    codesign --force --sign - "$BIN" || { echo "could not re-sign helper binary" >&2; exit 1; }
+fi
 
 # Bootstrap with retries. Each attempt re-bootouts first so a half-unloaded
 # previous job can never conflict with the new one. The revision file is
 # written only after a successful bootstrap, so a failed install keeps the
 # previous revision on disk and the app re-prompts the update on the next
-# launch.
+# launch. launchctl's real stderr + exit code are surfaced so a failure is
+# diagnosable instead of a generic "bootstrap attempt failed".
+BOOTSTRAP_ERR_FILE="$(mktemp /tmp/magsleep-bootstrap.XXXXXX)"
 for attempt in 1 2 3; do
-    if launchctl bootstrap system "$PLIST" 2>/dev/null; then
+    BOOTSTRAP_RC=0
+    launchctl bootstrap system "$PLIST" 2>"$BOOTSTRAP_ERR_FILE" || BOOTSTRAP_RC=$?
+    if [ "$BOOTSTRAP_RC" -eq 0 ]; then
+        rm -f "$BOOTSTRAP_ERR_FILE"
         echo "$HELPER_REVISION" > "$CONFIG_DIR/helper-version.txt"
         chown root:wheel "$CONFIG_DIR/helper-version.txt"
         chmod 644 "$CONFIG_DIR/helper-version.txt"
         echo "MagSleep helper installed"
         exit 0
     fi
-    echo "bootstrap attempt $attempt failed; retrying" >&2
-    sleep 1
+    echo "bootstrap attempt $attempt failed (exit $BOOTSTRAP_RC): $(cat "$BOOTSTRAP_ERR_FILE")" >&2
+    rm -f "$BOOTSTRAP_ERR_FILE"
+    sleep 2
     launchctl bootout "system/$LABEL" 2>/dev/null || true
 done
 

@@ -241,7 +241,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func activateConstraints(in content: NSView) {
-        let cardHeight: CGFloat = 84
+        let cardHeight: CGFloat = 88
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: content.topAnchor, constant: 44),
             iconView.centerXAnchor.constraint(equalTo: content.centerXAnchor),
@@ -329,8 +329,8 @@ final class ModeCardView: NSView {
         subtitleLabel.stringValue = subtitle
         subtitleLabel.font = .systemFont(ofSize: 11)
         subtitleLabel.textColor = .secondaryLabelColor
-        subtitleLabel.preferredMaxLayoutWidth = 130
-        subtitleLabel.maximumNumberOfLines = 2
+        subtitleLabel.preferredMaxLayoutWidth = 154
+        subtitleLabel.maximumNumberOfLines = 3
 
         checkmarkView.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Selected")
         checkmarkView.contentTintColor = .controlAccentColor
