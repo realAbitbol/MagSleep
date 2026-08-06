@@ -3,6 +3,21 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.10</title>
+            <pubDate>Thu, 06 Aug 2026 07:09:14 +0200</pubDate>
+            <sparkle:version>202608060707</sparkle:version>
+            <sparkle:shortVersionString>1.2.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- The reported **"Bootstrap failed: 5: Input/output error"** on fresh installs is now directly addressed: `install-helper.sh` **purges any pre-existing job state** (bootout + clears a disabled override + waits for launchd to fully release it) and **unconditionally re-signs the daemon binary in place** (at its final path, as root) before bootstrap — launchd's validation is stricter than a plain `codesign -v`, and a signature not produced at the path launchd reads, or stale job state, are the classic EIO causes
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/2936db5072fe25f975b2257a268bf854a920aad48ced402e71b931cbb1b95b6c/detection)
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.10/MagSleep-1.2.10.zip" length="2150597" type="application/octet-stream" sparkle:edSignature="/p29GP6W3z+8DyOO4asE7l/f/o8BJas6jA/RA+/FfmUYaFd+jXjxe53mwMP1DkfJoCM880KKhfX2AJImkWveCg=="/>
+        </item>
+        <item>
             <title>1.2.9</title>
             <pubDate>Thu, 06 Aug 2026 07:01:00 +0200</pubDate>
             <sparkle:version>202608060700</sparkle:version>
@@ -32,20 +47,6 @@
 - VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/ecac361ef84760f969ecac169989f67aa763ecfdcde89586b70838c80a7912b1/detection)
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.8/MagSleep-1.2.8.zip" length="2149967" type="application/octet-stream" sparkle:edSignature="An5Btv5IULWwVFGZ43cJQ6rb8BmqT1hx65IaURjz5ktpq6TyEf8PN4a5PtvBoVnPGMQ27v64AF9xcqmVaWMZBQ=="/>
-        </item>
-        <item>
-            <title>1.2.7</title>
-            <pubDate>Wed, 05 Aug 2026 23:34:48 +0200</pubDate>
-            <sparkle:version>202608052334</sparkle:version>
-            <sparkle:shortVersionString>1.2.7</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Changed
-
-- The menu bar version header is **greyed** again — the same dimmed header other menu-bar apps use — reverting the v1.2.6 "no longer greyed" change (the greyed look reads more naturally)
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.7/MagSleep-1.2.7.zip" length="2149966" type="application/octet-stream" sparkle:edSignature="1iAKQttuYo/4CQvXiEozhi4sac61NQAnTkUIK+sycLa+XIsFexaOtVKpIjLWucOSiu0BwheetZ6Irojjsk1MBg=="/>
         </item>
     </channel>
 </rss>

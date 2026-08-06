@@ -13,6 +13,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Fixed
 
 - The reported **"Bootstrap failed: 5: Input/output error"** on fresh installs is now directly addressed: `install-helper.sh` **purges any pre-existing job state** (bootout + clears a disabled override + waits for launchd to fully release it) and **unconditionally re-signs the daemon binary in place** (at its final path, as root) before bootstrap — launchd's validation is stricter than a plain `codesign -v`, and a signature not produced at the path launchd reads, or stale job state, are the classic EIO causes
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/2936db5072fe25f975b2257a268bf854a920aad48ced402e71b931cbb1b95b6c/detection)
 
 ## [1.2.9] - 2026-08-05
 
