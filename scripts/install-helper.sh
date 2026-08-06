@@ -35,12 +35,17 @@ if [ -z "${MAGSLEEP_INSTALL_LOCKED:-}" ]; then
     exit "$rc"
 fi
 
-# Stop any existing instance, then wait until launchd has actually released
-# the job before bootstrapping — booting out and immediately bootstrapping
-# races with launchd's unload and commonly fails with EIO. `launchctl print`
-# exits non-zero only once the job is fully gone from the domain.
+# Purge any pre-existing job state before installing. An old or half-loaded
+# job with the same label (a previous MagSleep version, or a leftover from a
+# failed earlier attempt) makes `launchctl bootstrap` fail with a cryptic
+# "Bootstrap failed: 5: Input/output error". Boot it out, clear any disabled
+# override, then wait until launchd has actually released the job — booting
+# out and immediately bootstrapping races with launchd's unload and commonly
+# fails with EIO. `launchctl print` exits non-zero only once the job is fully
+# gone from the domain.
 launchctl bootout "system/$LABEL" 2>/dev/null || true
-for _ in 1 2 3 4 5 6; do
+launchctl enable "system/$LABEL" 2>/dev/null || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
     if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
         break
     fi
@@ -61,13 +66,14 @@ plutil -lint "$PLIST" >/dev/null || { echo "installed helper plist is invalid" >
 xattr -dr com.apple.quarantine "$BIN" "$PLIST" 2>/dev/null || true
 xattr -dr com.apple.provenance "$BIN" "$PLIST" 2>/dev/null || true
 
-# Guarantee a valid ad-hoc signature on the installed binary: launchd validates
-# the signature at bootstrap, and re-signing as root here repairs any signature
-# a copy path or xattr handling may have disturbed.
-if ! codesign -v "$BIN" 2>/dev/null; then
-    echo "installed helper binary failed signature validation; re-signing" >&2
-    codesign --force --sign - "$BIN" || { echo "could not re-sign helper binary" >&2; exit 1; }
-fi
+# Re-sign the installed binary in place. launchd's bootstrap validation is
+# stricter than a plain `codesign -v` and fails with "Bootstrap failed: 5:
+# Input/output error" for a daemon whose signature wasn't produced at its
+# final path (e.g. copied out of a downloaded/quarantined app bundle).
+# Re-signing ad-hoc here, as root, at the exact path launchd reads eliminates
+# that whole class of failure — this is the fix for the reported EIO.
+codesign --force --sign - "$BIN" || { echo "could not sign helper binary" >&2; exit 1; }
+codesign -v "$BIN" || { echo "installed helper binary failed signature validation" >&2; exit 1; }
 
 # Bootstrap with retries. Each attempt re-bootouts first so a half-unloaded
 # previous job can never conflict with the new one. The revision file is
