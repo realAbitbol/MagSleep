@@ -3,6 +3,22 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.2.9</title>
+            <pubDate>Thu, 06 Aug 2026 07:01:00 +0200</pubDate>
+            <sparkle:version>202608060700</sparkle:version>
+            <sparkle:shortVersionString>1.2.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- Helper install failing with "bootstrap attempt N failed; retrying" (reported by a fresh-install user): `install-helper.sh` now strips quarantine/provenance xattrs from the installed daemon binary, guarantees a valid ad-hoc signature (re-signing it if a copy path disturbed it), retries with a longer settle, and — most importantly — surfaces **launchctl's real error and exit code** so any future failure is diagnosable instead of a generic retry message
+- The Sleep Mode card in the onboarding window was cut off ("LED off while the Mac / sleeps, back on when you…"): the card subtitles now wrap up to 3 lines with the correct measurement width, and the cards are slightly taller
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/109eb3766c39ff2af85c0b77e93020e1cb8c3c64142ad5732df4707d62be3482/detection)
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.9/MagSleep-1.2.9.zip" length="2150404" type="application/octet-stream" sparkle:edSignature="5XFOOtKnndYYR8LuTEHFPxFKHVEjoolYUZ4EgCa2stcO1YkFmxXx9XGKItVNAFLLkm8DZfJk4xbptJJ7bEM2Dw=="/>
+        </item>
+        <item>
             <title>1.2.8</title>
             <pubDate>Thu, 06 Aug 2026 00:00:45 +0200</pubDate>
             <sparkle:version>202608052359</sparkle:version>
@@ -30,24 +46,6 @@
 - The menu bar version header is **greyed** again — the same dimmed header other menu-bar apps use — reverting the v1.2.6 "no longer greyed" change (the greyed look reads more naturally)
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.7/MagSleep-1.2.7.zip" length="2149966" type="application/octet-stream" sparkle:edSignature="1iAKQttuYo/4CQvXiEozhi4sac61NQAnTkUIK+sycLa+XIsFexaOtVKpIjLWucOSiu0BwheetZ6Irojjsk1MBg=="/>
-        </item>
-        <item>
-            <title>1.2.6</title>
-            <pubDate>Wed, 05 Aug 2026 23:28:12 +0200</pubDate>
-            <sparkle:version>202608052327</sparkle:version>
-            <sparkle:shortVersionString>1.2.6</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Changed
-
-- The menu bar **version header is no longer greyed** (bold, normal text color)
-
-### Removed
-
-- **Shortcuts (App Intents)**: the SwiftPM build path cannot emit the AppIntents metadata (`Metadata.appintents`) the Shortcuts app requires, so the actions never appeared — the code was removed rather than shipped dead. **AppleScript remains the automation surface** (fully supported and verified)
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.6/MagSleep-1.2.6.zip" length="2149886" type="application/octet-stream" sparkle:edSignature="FAa4SSBRKpI9GTN+cnhJuj6cnzX7h8gClcp7V2QARAb3ddrSv54qy+5UBXwOjQfv86KuP8DCCKrX4hybU0BIAw=="/>
         </item>
     </channel>
 </rss>

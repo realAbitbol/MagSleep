@@ -15,7 +15,7 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 ![License](https://img.shields.io/badge/personal%20use-welcome-lightgrey)
 
 <!-- VT_BADGE -->
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%20malicious/75-4c1?logo=virustotal)](https://www.virustotal.com/gui/file/ecac361ef84760f969ecac169989f67aa763ecfdcde89586b70838c80a7912b1/detection)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%20malicious/75-4c1?logo=virustotal)](https://www.virustotal.com/gui/file/109eb3766c39ff2af85c0b77e93020e1cb8c3c64142ad5732df4707d62be3482/detection)
 <!-- /VT_BADGE -->
 
 </div>
@@ -76,7 +76,7 @@ Try these in order — stop as soon as one works:
 If the error happens while opening the DMG, unblock the DMG file first, then open it again:
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.8.dmg
+xattr -d com.apple.quarantine ~/Downloads/MagSleep-1.2.9.dmg
 ```
 
 **Method D — remove the quarantine flag (most reliable)**
@@ -177,10 +177,10 @@ If MagSleep keeps your nights a little darker, you can [buy me a coffee](https:/
 ```bash
 git clone <repo-url>
 cd MagSleep
-make app VERSION=1.2.8    # build dist/MagSleep.app
-make install VERSION=1.2.8  # copy to /Applications
+make app VERSION=1.2.9    # build dist/MagSleep.app
+make install VERSION=1.2.9  # copy to /Applications
 # or
-make dmg VERSION=1.2.8    # dist/MagSleep-1.2.8.dmg
+make dmg VERSION=1.2.9    # dist/MagSleep-1.2.9.dmg
 ```
 
 ## Build targets
