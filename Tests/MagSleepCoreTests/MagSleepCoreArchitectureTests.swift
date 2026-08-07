@@ -133,3 +133,77 @@ final class UnixSocketTests: XCTestCase {
         XCTAssertThrowsError(try UnixSocket.makeSockAddr(longPath))
     }
 }
+
+final class MachOContentHashTests: XCTestCase {
+    /// A minimal thin arm64 Mach-O: header + `__LINKEDIT` segment + code
+    /// signature load command + content + signature blob. `dataoff` is 136.
+    private func makeMachO(
+        contentByte: UInt8,
+        sigByte: UInt8,
+        filesize: UInt64,
+        datasize: UInt32
+    ) -> Data {
+        func u32(_ value: UInt32) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
+        func u64(_ value: UInt64) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
+        var d = Data()
+        d.append(u32(0xfeedfacf)) // MH_MAGIC_64
+        d.append(u32(0x0100_000c)) // CPU_TYPE_ARM64
+        d.append(u32(0)) // cpusubtype
+        d.append(u32(0)) // filetype
+        d.append(u32(2)) // ncmds
+        d.append(u32(88)) // sizeofcmds
+        d.append(u32(0)) // flags
+        d.append(u32(0)) // reserved
+        // LC_SEGMENT_64: __LINKEDIT
+        d.append(u32(0x19))
+        d.append(u32(72))
+        d.append(Data("__LINKEDIT".utf8))
+        d.append(Data(repeating: 0, count: 6)) // 16-byte padded segname
+        d.append(u64(0)) // vmaddr
+        d.append(u64(0)) // vmsize
+        d.append(u64(0)) // fileoff
+        d.append(u64(filesize)) // filesize (variant field at +48)
+        d.append(u32(0)) // maxprot
+        d.append(u32(0)) // initprot
+        d.append(u32(0)) // nsects
+        d.append(u32(0)) // flags
+        // LC_CODE_SIGNATURE
+        d.append(u32(0x1d))
+        d.append(u32(16))
+        d.append(u32(136)) // dataoff
+        d.append(u32(datasize)) // datasize (variant field at +12)
+        // content (offsets 120...135)
+        d.append(Data(repeating: 0, count: 15))
+        d.append(contentByte)
+        // signature blob (offsets 136...151)
+        d.append(Data(repeating: 0, count: 15))
+        d.append(sigByte)
+        return d
+    }
+
+    func testHashIgnoresSignatureMetadata() {
+        // Different signature bytes, signature size, and the two load-command
+        // size fields must not change the hash (that is the re-sign case).
+        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, filesize: 32, datasize: 16)
+        let b = makeMachO(contentByte: 0x41, sigByte: 0x99, filesize: 64, datasize: 32)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: a), MachOContentHash.hexSHA256(of: b))
+    }
+
+    func testHashDetectsContentChange() {
+        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, filesize: 32, datasize: 16)
+        let changed = makeMachO(contentByte: 0x42, sigByte: 0x01, filesize: 32, datasize: 16)
+        XCTAssertNotEqual(MachOContentHash.hexSHA256(of: a), MachOContentHash.hexSHA256(of: changed))
+    }
+
+    func testHashRejectsNonMachO() {
+        XCTAssertNil(MachOContentHash.hexSHA256(of: Data("not a mach-o at all".utf8)))
+    }
+
+    func testShouldReinstallByContentHash() {
+        XCTAssertTrue(HelperVersioning.shouldReinstall(installedContentHash: "aaa", bundledContentHash: "bbb"))
+        XCTAssertFalse(HelperVersioning.shouldReinstall(installedContentHash: "aaa", bundledContentHash: "aaa"))
+        // Unknown hashes never force a reinstall on their own (revision fallback).
+        XCTAssertFalse(HelperVersioning.shouldReinstall(installedContentHash: nil, bundledContentHash: "aaa"))
+        XCTAssertFalse(HelperVersioning.shouldReinstall(installedContentHash: "aaa", bundledContentHash: nil))
+    }
+}

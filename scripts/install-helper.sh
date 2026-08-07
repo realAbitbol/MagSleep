@@ -105,22 +105,19 @@ xattr -dr com.apple.provenance "$BIN" "$PLIST" 2>/dev/null || true
 # final path (e.g. copied out of a downloaded/quarantined app bundle).
 # Re-signing ad-hoc here, as root, at the exact path launchd reads eliminates
 # that whole class of failure — this is the fix for the reported EIO. The
-# explicit -i identifier must match the one build-app.sh used (ad-hoc signing
-# otherwise appends a requirement hash to the basename), or the re-signed
-# binary's cdhash would differ from the pin below and a legit install would
-# fail its own integrity check.
+# explicit -i identifier keeps the installed signature's identifier stable
+# (ad-hoc signing otherwise appends a requirement hash to the basename).
+#
+# NOTE: the re-signed binary's cdhash is deliberately NOT compared to the
+# build-time pin. Re-signing recomputes the CodeDirectory with THIS machine's
+# codesign, so a CI-built binary re-signed locally has a different cdhash even
+# when the code is byte-identical (different codesign versions emit different
+# CodeDirectory layouts) — a 1.3.2 regression that falsely rejected every
+# legitimate helper update. The source cdhash check above already proves the
+# copied bytes are the shipped ones, and `codesign -v` proves the re-signed
+# signature is valid.
 codesign --force --sign - -i "$LABEL" "$BIN" || { echo "could not sign helper binary" >&2; exit 1; }
 codesign -v "$BIN" || { echo "installed helper binary failed signature validation" >&2; exit 1; }
-# The installed binary is re-signed with the same identifier the app shipped it
-# under (com.magsleep.helper, from the $BIN basename), so its cdhash must equal
-# the pin — catches a corrupted copy that happened to pass the source check.
-if [ -n "${EXPECTED_CDHASH:-}" ]; then
-    INSTALLED_CDHASH="$(codesign -dvvv "$BIN" 2>&1 | sed -n 's/^CDHash=//p')"
-    if [ "$INSTALLED_CDHASH" != "$EXPECTED_CDHASH" ]; then
-        echo "installed helper binary cdhash mismatch after re-sign" >&2
-        exit 1
-    fi
-fi
 
 # Bootstrap with retries. Each attempt re-bootouts first so a half-unloaded
 # previous job can never conflict with the new one. The revision file is

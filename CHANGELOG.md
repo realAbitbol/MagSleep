@@ -8,6 +8,13 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.3] - 2026-08-07
+
+### Fixed
+
+- **Helper update failed on 1.3.2** ("installed helper binary cdhash mismatch after re-sign"): the install-time integrity check compared the re-signed cdhash against the build-time pin, but re-signing recomputes the CodeDirectory with the local `codesign` — a CI-built binary re-signed locally yields a different cdhash for identical code, so a legitimate update was rejected after the old job was already unloaded (helper left not running). The final-path cdhash check is removed; the source-side checks (app bundle signature + bundled-helper cdhash pin) remain and are toolchain-independent
+- **Helper update prompts only when there is actually a new binary**: the app now compares a signing-independent content hash of the installed helper against the bundled one (with the git revision as fallback), instead of trusting the recorded revision — so a stale revision file can no longer trigger a bogus update prompt when the installed binary is already current
+
 ## [1.3.2] - 2026-08-07
 
 ### Fixed

@@ -11,4 +11,16 @@ public enum HelperVersioning {
         guard let installedRevision, !installedRevision.isEmpty else { return true }
         return installedRevision != bundledRevision
     }
+
+    /// True when the helper's *binary* differs from the one the app bundles.
+    /// Content hashes are signing-independent (see `MachOContentHash`), so this
+    /// stays correct across machines whose codesign versions differ — unlike
+    /// the recorded revision, which can drift from the installed binary (a
+    /// failed install can leave the new binary in place while keeping the old
+    /// version file). Returns false when either hash is unavailable, so callers
+    /// fall back to the revision comparison before asking this function.
+    public static func shouldReinstall(installedContentHash: String?, bundledContentHash: String?) -> Bool {
+        guard let installedContentHash, let bundledContentHash else { return false }
+        return installedContentHash != bundledContentHash
+    }
 }

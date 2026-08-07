@@ -189,20 +189,50 @@ final class HelperManager {
         return revision.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Content hash of the helper binary bundled with this app. Signing-
+    /// independent, so it can be compared against the installed binary even
+    /// though the two were signed by different codesign versions.
+    private var bundledHelperContentHash: String? {
+        guard let path = Bundle.main.path(forResource: "magsleep-helper", ofType: nil) else { return nil }
+        return MachOContentHash.hexSHA256(of: URL(fileURLWithPath: path))
+    }
+
+    /// Content hash of the currently installed helper binary.
+    private var installedHelperContentHash: String? {
+        MachOContentHash.hexSHA256(of: URL(fileURLWithPath: MagSleep.helperBinaryPath))
+    }
+
     /// Whether the installed helper matches the one bundled with this app
-    /// (nil when the helper is not installed).
+    /// (nil when the helper is not installed). Decided by comparing the actual
+    /// binaries: the recorded revision can drift from the installed binary (a
+    /// failed install leaves the new binary in place with the old version
+    /// file), and a cdhash comparison would false-positive across machines
+    /// with different codesign versions. Falls back to the revision when the
+    /// binaries can't be read.
     var helperIsCurrent: Bool? {
         guard isInstalled else { return nil }
+        if let installed = installedHelperContentHash, let bundled = bundledHelperContentHash {
+            return !HelperVersioning.shouldReinstall(
+                installedContentHash: installed,
+                bundledContentHash: bundled
+            )
+        }
         return !HelperVersioning.shouldReinstall(
             installedRevision: helperVersion,
             bundledRevision: helperRevision
         )
     }
 
-    /// Returns true if the installed helper revision differs from the one this
-    /// app bundles — i.e. the helper actually changed and must be reinstalled.
+    /// Returns true if the installed helper differs from the one this app
+    /// bundles — i.e. the helper actually changed and must be reinstalled.
     var needsUpgrade: Bool {
         guard isInstalled else { return false }
+        if let installed = installedHelperContentHash, let bundled = bundledHelperContentHash {
+            return HelperVersioning.shouldReinstall(
+                installedContentHash: installed,
+                bundledContentHash: bundled
+            )
+        }
         return HelperVersioning.shouldReinstall(
             installedRevision: helperVersion,
             bundledRevision: helperRevision
