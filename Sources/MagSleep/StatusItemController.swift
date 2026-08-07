@@ -25,7 +25,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private let launchAtLoginItem = NSMenuItem()
     private let nightScheduleItem = NSMenuItem()
     private let notificationBlinkItem = NSMenuItem()
-    private let dumpTreeItem = NSMenuItem()
     private let notificationBlink: NotificationBlink
 
     init(helper: HelperManager) {
@@ -376,14 +375,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         notificationBlinkItem.action = #selector(toggleNotificationBlink)
         notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
         menu.addItem(notificationBlinkItem)
-
-        // Debug aid for tuning the notification-node detector on a specific
-        // Mac: dumps the Notification Center accessibility tree as JSON.
-        dumpTreeItem.title = "Dump Notification Center Tree…"
-        dumpTreeItem.toolTip = "Save the current Notification Center accessibility tree (for tuning Notification Blink)"
-        dumpTreeItem.target = self
-        dumpTreeItem.action = #selector(dumpNotificationTree)
-        menu.addItem(dumpTreeItem)
     }
 
     @objc private func setSleepMode() {
@@ -467,26 +458,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // State settles async after the permission prompt; the observer
         // refreshes the checkmark. A refused prompt leaves it unchecked.
         updateMenuStates()
-    }
-
-    @objc private func dumpNotificationTree() {
-        switch notificationBlink.dumpTree() {
-        case .success(let url):
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        case .failure(.permissionDenied):
-            showError(
-                "MagSleep needs Accessibility access to read the Notification Center. "
-                    + "System Settings was opened so you can grant it, then try again. "
-                    + "If you already granted it, quit and reopen MagSleep (Cmd+Q) so it takes effect."
-            )
-        case .failure(.notificationCenterNotRunning):
-            showError(
-                "The Notification Center process isn't running, so there's nothing to dump. "
-                    + "Open Notification Center once (click the clock in the menu bar), then try again."
-            )
-        case .failure(.writeFailed):
-            showError("Could not write the Notification Center tree.")
-        }
     }
 
     @objc private func toggleNightSchedule() {
@@ -661,12 +632,10 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
         // Night schedule + notification-blink toggles. The blink item is
         // greyed while the helper can't apply blinks (not loaded or Disabled),
-        // so the toggle can't sit on with no effect. The dump item is only
-        // useful once Accessibility access has been granted (blink enabled).
+        // so the toggle can't sit on with no effect.
         nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
         notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
         notificationBlinkItem.isEnabled = helper.isLoaded && helper.isEnabled
-        dumpTreeItem.isEnabled = notificationBlink.isEnabled
     }
 
     private func refreshHelperState() {

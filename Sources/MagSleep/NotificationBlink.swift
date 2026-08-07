@@ -14,9 +14,8 @@ import MagSleepCore
 /// permission (heavier than notification permission — hence the System
 /// Settings pane on refusal). Enabling requests it; if the user refuses, the
 /// toggle stays off (unchecked) and can be retried later. The tree-node
-/// detection is pure (`NotificationNodeDetector` in MagSleepCore) and tuned
-/// per macOS version — use `dumpTree()` (menu: "Dump Notification Center
-/// Tree") to inspect the structure on a specific Mac.
+/// detection is pure (`NotificationNodeDetector` in MagSleepCore) and verified
+/// against Sonoma-era and Tahoe-era tree fixtures (macOS 14–26).
 final class NotificationBlink {
     /// Posted whenever the toggle's state changes, so the menu can refresh.
     static let stateDidChange = Notification.Name("MagSleepNotificationBlinkStateDidChange")
@@ -29,6 +28,9 @@ final class NotificationBlink {
     private let helper: HelperManager
     private var timer: Timer?
     private var reauthTimer: Timer?
+    /// Best-effort observer on the undocumented `com.apple.accessibility.api`
+    /// distributed notification (see `startPolling`).
+    private var permissionObserver: NSObjectProtocol?
     private var knownKeys = Set<String>()
     private var isSeeded = false
     /// Poll interval: short enough to feel live, long enough to stay cheap.
@@ -74,51 +76,6 @@ final class NotificationBlink {
             requestPermissionThenStart()
         } else {
             stop()
-        }
-    }
-
-    // MARK: - Debug
-
-    /// Why a dump failed, so the UI can say exactly what's wrong instead of a
-    /// generic "could not capture" (which previously hid real causes).
-    enum DumpFailure: Error, Equatable {
-        case permissionDenied
-        case notificationCenterNotRunning
-        case writeFailed
-    }
-
-    /// Writes the current Notification Center accessibility tree as JSON (for
-    /// tuning `NotificationNodeDetector` on a specific Mac) and reveals it in
-    /// Finder. Prompts for Accessibility access if missing.
-    @discardableResult
-    func dumpTree() -> Result<URL, DumpFailure> {
-        // The user explicitly asked — request the permission if it's missing
-        // (the practical trust check means a granted-but-ad-hoc build passes
-        // instead of failing). If the dialog is suppressed (e.g. a cached
-        // denial), send them to the pane so the dump can actually be granted.
-        guard hasAccessibilityPermission(prompt: true) else {
-            openAccessibilitySettings()
-            return .failure(.permissionDenied)
-        }
-        guard let snapshot = snapshotNotificationCenter() else {
-            return .failure(.notificationCenterNotRunning)
-        }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(snapshot) else { return .failure(.writeFailed) }
-        guard let directory = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ).appendingPathComponent("MagSleep", isDirectory: true) else { return .failure(.writeFailed) }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("notification-tree.json")
-        do {
-            try data.write(to: url)
-            return .success(url)
-        } catch {
-            return .failure(.writeFailed)
         }
     }
 
@@ -220,17 +177,36 @@ final class NotificationBlink {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        // Periodically re-check permission; a revocation should stop the
-        // polling and flip the toggle off rather than silently no-op forever.
+        // Re-check permission: a revocation should stop the polling and flip
+        // the toggle off rather than silently no-op forever. Two triggers —
+        // a slow backstop timer (the reliable path) and the best-effort
+        // distributed notification (the pattern production apps like
+        // alt-tab / WhichSpace use for instant reaction; note it can silently
+        // fail for ad-hoc-signed binaries on macOS 15+, per alt-tab).
         reauthTimer?.invalidate()
         let reauthTimer = Timer(timeInterval: reauthInterval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            if !self.hasAccessibilityPermission(prompt: false) {
-                self.stop()
-            }
+            self?.verifyPermissionStillGranted()
         }
         RunLoop.main.add(reauthTimer, forMode: .common)
         self.reauthTimer = reauthTimer
+        if let permissionObserver {
+            DistributedNotificationCenter.default().removeObserver(permissionObserver)
+        }
+        permissionObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.verifyPermissionStillGranted()
+        }
+    }
+
+    /// Re-checks that Accessibility permission is still granted; a revocation
+    /// stops polling and flips the toggle off.
+    private func verifyPermissionStillGranted() {
+        if !hasAccessibilityPermission(prompt: false) {
+            stop()
+        }
     }
 
     private func stop() {
@@ -238,6 +214,10 @@ final class NotificationBlink {
         timer = nil
         reauthTimer?.invalidate()
         reauthTimer = nil
+        if let permissionObserver {
+            DistributedNotificationCenter.default().removeObserver(permissionObserver)
+        }
+        permissionObserver = nil
         isEnabled = false
     }
 
@@ -345,5 +325,8 @@ final class NotificationBlink {
     deinit {
         timer?.invalidate()
         reauthTimer?.invalidate()
+        if let permissionObserver {
+            DistributedNotificationCenter.default().removeObserver(permissionObserver)
+        }
     }
 }
