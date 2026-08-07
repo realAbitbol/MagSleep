@@ -1,8 +1,8 @@
 # TEMPORARY diagnostic — verifies that a self-signed "MagSleep Code Signing"
-# identity works for codesign on the release runner (macOS 26). Answers: does
-# codesign accept the self-signed cert, and is the designated requirement
-# stable (certificate-anchored, not cdhash)? Run via workflow_dispatch, then
-# delete this file.
+# identity works for codesign on the release runner (macOS 26) once the cert is
+# trusted for code signing inside the ephemeral CI keychain. Answers: does
+# add-trusted-cert work headless on the runner, and is the DR stable
+# (certificate-anchored)? Run via workflow_dispatch, then delete this file.
 
 name: Cert Diagnostic
 
@@ -20,7 +20,7 @@ jobs:
       MAGSLEEP_CERT_PASSWORD: ${{ secrets.MAGSLEEP_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
-      - name: Import identity and test signing
+      - name: Import identity, trust it in the CI keychain, test signing
         run: |
           set -euo pipefail
           KC="$RUNNER_TEMP/signing.keychain-db"
@@ -31,8 +31,11 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MAGSLEEP_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner "$KC"
           security list-keychains -d user -s "$KC"
-          echo "=== find-identity (no -v: self-signed certs are NOT_TRUSTED) ==="
-          security find-identity -p codesigning "$KC"
+          echo "=== extract + trust the cert for code signing (user domain, CI keychain) ==="
+          openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -clcerts -nokeys -out "$RUNNER_TEMP/cert.crt" -passin "pass:$MAGSLEEP_CERT_PASSWORD"
+          security add-trusted-cert -d -r trustRoot -k "$KC" -p codeSign "$RUNNER_TEMP/cert.crt"
+          echo "=== find-identity -v (must now be VALID, not NOT_TRUSTED) ==="
+          security find-identity -v -p codesigning "$KC"
           echo "=== sign a test artifact ==="
           printf 'test' > "$RUNNER_TEMP/signme.txt"
           codesign --force --sign "MagSleep Code Signing" "$RUNNER_TEMP/signme.txt"
