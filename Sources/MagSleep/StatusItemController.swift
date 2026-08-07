@@ -285,6 +285,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         launchAtLoginItem.toolTip = helper.canManageLaunchAtLogin
             ? "Start MagSleep automatically at login"
             : "Move MagSleep.app to /Applications to use this"
+        launchAtLoginItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
         launchAtLoginItem.isEnabled = helper.canManageLaunchAtLogin
         launchAtLoginItem.target = self
         launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
@@ -336,6 +337,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
         // Quit
         let quitItem = NSMenuItem(title: "Quit MagSleep", action: #selector(quit), keyEquivalent: "q")
+        quitItem.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
         quitItem.target = self
         menu.addItem(quitItem)
 
