@@ -23,6 +23,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Internal
 
 - About-dialog text view extracted from the menu controller; the menu's install-state notification now fires on both install start and finish; the VirusTotal badge update in the release proof is idempotent
+- VirusTotal scan of the DMG: [1 malicious / 75 engines](https://www.virustotal.com/gui/file/c0639374cc4e45149053ec2e9d77d6a6a7de6aae82939d700562dc073a2a3d3e/detection)
 
 ## [1.3.1] - 2026-08-07
 
