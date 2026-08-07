@@ -204,16 +204,12 @@ final class PowerDaemon {
             return SocketResponse(id: request.id, ok: false, config: nil, error: "unauthorized").encodeLine()
         }
         log.info("processing request: \(request.cmd, privacy: .public)")
-        // Pure dispatch: response / blink / config decision (unit-tested).
+        // Pure dispatch: response / config decision (unit-tested).
         let outcome = SocketCommandHandler.handle(
             request: request,
             isAuthorized: true,
-            canBlink: config.enabled && !isSleeping && !isDisplayAsleep,
             currentConfig: config
         )
-        if outcome.shouldBlink {
-            _ = handleBlinkRequest()
-        }
         if let newConfig = outcome.newConfig {
             config = newConfig
             saveConfig(config)
@@ -286,47 +282,7 @@ final class PowerDaemon {
         }
     }
 
-    // MARK: - Notification Blink
-
-    /// Monotonic token so overlapping blink requests cancel each other's
-    /// queued writes instead of interleaving arbitrarily.
-    private var blinkGeneration = 0
-
-    /// Notification alert: 5 quick green blinks (~150 ms on / off), then
-    /// restore the mode's LED target. **Disabled always wins** — the LED stays
-    /// under macOS control and gets zero SMC traffic while disabled.
-    /// Returns false (so the app sees an honest ack) when the blink was
-    /// skipped.
-    private func handleBlinkRequest() -> Bool {
-        guard config.enabled else { return false }
-        // Skip while the display is asleep — blinking into a dark screen is
-        // pointless (and the reassert timer would fight it).
-        guard !isSleeping, !isDisplayAsleep else { return false }
-
-        blinkGeneration += 1
-        let generation = blinkGeneration
-        let sequence: [MagSafeLED.Color] = (0..<5).flatMap { _ in [.green, .off] }
-        for (index, color) in sequence.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.15) { [weak self] in
-                // A newer blink supersedes this one; a disable or sleep mid-
-                // sequence stops it so the "disabled always wins" invariant
-                // holds even during the blink.
-                guard let self,
-                      self.blinkGeneration == generation,
-                      self.config.enabled,
-                      !self.isSleeping,
-                      !self.isDisplayAsleep else { return }
-                self.setLED(color)
-            }
-        }
-        // Restore the active mode target after the blink finishes (the 3s
-        // re-assert timer would converge it anyway).
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(sequence.count) * 0.15 + 0.1) { [weak self] in
-            guard let self, self.blinkGeneration == generation else { return }
-            self.applyMode()
-        }
-        return true
-    }
+    // MARK: - Logging
 
     /// Logs SMC failures without spamming the unified log on every 3s tick.
     private func logThrottled(_ message: String) {

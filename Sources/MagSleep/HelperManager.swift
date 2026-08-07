@@ -298,15 +298,6 @@ final class HelperManager {
         }
     }
 
-    /// Asks the daemon to blink the LED green (notification alert). Gated on
-    /// the helper being loaded AND enabled — "Disabled always wins", so no
-    /// blink while the LED belongs to macOS. Fire-and-forget: the daemon
-    /// acknowledges but the blink itself is async on its side.
-    func sendBlink() {
-        guard isLoaded, isEnabled else { return }
-        sendRequest(RequestCommand.blink) { _ in }
-    }
-
     func setMode(_ newMode: OperationMode, completion: @escaping (Bool) -> Void) {
         guard isLoaded else {
             lastError = "Helper is not running"

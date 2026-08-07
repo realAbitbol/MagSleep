@@ -11,8 +11,6 @@ public enum RequestCommand {
     public static let disable = "disable"
     public static let nightScheduleOn = "nightschedule:on"
     public static let nightScheduleOff = "nightschedule:off"
-    /// Transient action (not a config mutation): blink the LED green.
-    public static let blink = "blink"
 }
 
 extension DaemonConfig {

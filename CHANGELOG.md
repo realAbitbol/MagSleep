@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [Unreleased]
+
+### Removed
+
+- **Notification Blink** (the menu toggle that blinked the LED on incoming notifications, shipped in 1.3.0). It read the Notification Center through the **Accessibility API**, and macOS's TCC records Accessibility grants against the app's code-signing identity: for an ad-hoc-signed app that identity is the binary's cdhash, which changes on every build — so the grant would silently break for users on every Sparkle update. There is no way to make the grant survive updates without a trusted (paid Developer ID) signing identity, so the feature is removed rather than shipped broken. The fix is documented in the repo's git history and can be revived if the app ever moves to Developer ID signing
+
 ## [1.3.0] - 2026-08-07
 
 ### Added

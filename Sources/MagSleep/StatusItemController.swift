@@ -24,12 +24,9 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
     private let launchAtLoginItem = NSMenuItem()
     private let nightScheduleItem = NSMenuItem()
-    private let notificationBlinkItem = NSMenuItem()
-    private let notificationBlink: NotificationBlink
 
     init(helper: HelperManager) {
         self.helper = helper
-        self.notificationBlink = NotificationBlink(helper: helper)
         super.init()
 
         setupObservers()
@@ -37,7 +34,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         createStatusItem()
         startRefreshTimer()
         startConfigWatcher()
-        notificationBlink.start()
         updateManager.start()
 
         // Defer startup prompts so modal alerts don't block
@@ -195,13 +191,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         ) { [weak self] _ in
             self?.refreshHelperState()
         }
-        // Notification-blink enable/deny settles async — refresh the menu.
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(notificationBlinkChanged),
-            name: NotificationBlink.stateDidChange,
-            object: notificationBlink
-        )
         // Helper transient state (e.g. an install starting) drives the
         // hourglass icon — refresh immediately so it appears.
         NotificationCenter.default.addObserver(
@@ -210,10 +199,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             name: HelperManager.stateDidChangeNotification,
             object: nil
         )
-    }
-
-    @objc private func notificationBlinkChanged() {
-        updateMenuStates()
     }
 
     @objc private func helperStateChanged() {
@@ -367,14 +352,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         nightScheduleItem.action = #selector(toggleNightSchedule)
         nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
         menu.addItem(nightScheduleItem)
-
-        notificationBlinkItem.title = "Notification Blink"
-        notificationBlinkItem.toolTip = "Blink the LED green when a notification arrives (requires Accessibility access)"
-        notificationBlinkItem.image = NSImage(systemSymbolName: "bell.badge", accessibilityDescription: nil)
-        notificationBlinkItem.target = self
-        notificationBlinkItem.action = #selector(toggleNotificationBlink)
-        notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
-        menu.addItem(notificationBlinkItem)
     }
 
     @objc private func setSleepMode() {
@@ -451,13 +428,6 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         } catch {
             showError("Failed to change launch at login setting: \(error.localizedDescription)")
         }
-    }
-
-    @objc private func toggleNotificationBlink() {
-        notificationBlink.setEnabled(!notificationBlink.isEnabled)
-        // State settles async after the permission prompt; the observer
-        // refreshes the checkmark. A refused prompt leaves it unchecked.
-        updateMenuStates()
     }
 
     @objc private func toggleNightSchedule() {
@@ -630,12 +600,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // Update launch at login
         launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
 
-        // Night schedule + notification-blink toggles. The blink item is
-        // greyed while the helper can't apply blinks (not loaded or Disabled),
-        // so the toggle can't sit on with no effect.
+        // Night schedule toggle.
         nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
-        notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
-        notificationBlinkItem.isEnabled = helper.isLoaded && helper.isEnabled
     }
 
     private func refreshHelperState() {
