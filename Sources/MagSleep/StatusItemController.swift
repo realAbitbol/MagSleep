@@ -470,15 +470,23 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     }
 
     @objc private func dumpNotificationTree() {
-        guard let url = notificationBlink.dumpTree() else {
+        switch notificationBlink.dumpTree() {
+        case .success(let url):
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .failure(.permissionDenied):
             showError(
-                "Could not capture the Notification Center tree. "
-                    + "It needs Accessibility access — System Settings was opened so you can grant it, "
-                    + "then try again."
+                "MagSleep needs Accessibility access to read the Notification Center. "
+                    + "System Settings was opened so you can grant it, then try again. "
+                    + "If you already granted it, quit and reopen MagSleep (Cmd+Q) so it takes effect."
             )
-            return
+        case .failure(.notificationCenterNotRunning):
+            showError(
+                "The Notification Center process isn't running, so there's nothing to dump. "
+                    + "Open Notification Center once (click the clock in the menu bar), then try again."
+            )
+        case .failure(.writeFailed):
+            showError("Could not write the Notification Center tree.")
         }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     @objc private func toggleNightSchedule() {

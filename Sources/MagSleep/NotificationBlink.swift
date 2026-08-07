@@ -79,47 +79,88 @@ final class NotificationBlink {
 
     // MARK: - Debug
 
+    /// Why a dump failed, so the UI can say exactly what's wrong instead of a
+    /// generic "could not capture" (which previously hid real causes).
+    enum DumpFailure: Error, Equatable {
+        case permissionDenied
+        case notificationCenterNotRunning
+        case writeFailed
+    }
+
     /// Writes the current Notification Center accessibility tree as JSON (for
     /// tuning `NotificationNodeDetector` on a specific Mac) and reveals it in
-    /// Finder. Returns the file URL, or nil if permission is missing / the
-    /// tree could not be captured.
+    /// Finder. Prompts for Accessibility access if missing.
     @discardableResult
-    func dumpTree() -> URL? {
-        // The user explicitly asked — request the permission if it's missing.
-        // If the system dialog is suppressed (e.g. a cached denial in System
-        // Settings), send them to the pane so the dump can actually be granted.
+    func dumpTree() -> Result<URL, DumpFailure> {
+        // The user explicitly asked — request the permission if it's missing
+        // (the practical trust check means a granted-but-ad-hoc build passes
+        // instead of failing). If the dialog is suppressed (e.g. a cached
+        // denial), send them to the pane so the dump can actually be granted.
         guard hasAccessibilityPermission(prompt: true) else {
             openAccessibilitySettings()
-            return nil
+            return .failure(.permissionDenied)
         }
-        guard let snapshot = snapshotNotificationCenter() else { return nil }
+        guard let snapshot = snapshotNotificationCenter() else {
+            return .failure(.notificationCenterNotRunning)
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(snapshot) else { return nil }
+        guard let data = try? encoder.encode(snapshot) else { return .failure(.writeFailed) }
         guard let directory = try? FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        ).appendingPathComponent("MagSleep", isDirectory: true) else { return nil }
+        ).appendingPathComponent("MagSleep", isDirectory: true) else { return .failure(.writeFailed) }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("notification-tree.json")
         do {
             try data.write(to: url)
-            return url
+            return .success(url)
         } catch {
-            return nil
+            return .failure(.writeFailed)
         }
     }
 
     // MARK: - Permission (Accessibility, not notification authorization)
 
+    /// True when this process can actually read the accessibility tree.
+    ///
+    /// Follows the pattern production apps use (e.g. Clipy's Accessibility
+    /// helper): `AXIsProcessTrustedWithOptions` can return **false for
+    /// unsigned / ad-hoc-signed builds even when the user granted access**, so
+    /// the API's word is not trusted on its own. A practical read of the
+    /// system-wide AX element confirms trust: `.success` (an app has focus and
+    /// the read worked) or `.noValue` (no app has focus, but the API accepted
+    /// the call) both mean trust is granted; `.apiDisabled`/`.cannotComplete`
+    /// mean it is not.
     private func hasAccessibilityPermission(prompt: Bool) -> Bool {
-        if prompt {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            return AXIsProcessTrustedWithOptions(options)
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        if accessibilityTrusted() {
+            return true
         }
-        return AXIsProcessTrusted()
+        guard prompt else { return false }
+        // Show the system dialog; its return value can also be stale/lying for
+        // ad-hoc builds (omi documents the same on macOS 26), so re-verify with
+        // the practical read after a short settle (Loop waits 250 ms for the
+        // same reason).
+        _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+        Thread.sleep(forTimeInterval: 0.3)
+        return accessibilityTrusted()
+    }
+
+    private func accessibilityTrusted() -> Bool {
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        if AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary) {
+            return true
+        }
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(),
+            kAXFocusedApplicationAttribute as CFString,
+            &value
+        )
+        return result == .success || result == .noValue
     }
 
     private func openAccessibilitySettings() {
