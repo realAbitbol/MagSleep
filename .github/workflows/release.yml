@@ -39,7 +39,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       # Full history: the appcast commit later lands on top of master.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7 # v4 targets deprecated Node 20
         with:
           fetch-depth: 0
 
