@@ -34,6 +34,9 @@ jobs:
     env:
       VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
       SPARKLE_EDDSA_KEY: ${{ secrets.SPARKLE_EDDSA_KEY }}
+      # gh does not auto-read GITHUB_TOKEN in Actions — without GH_TOKEN the
+      # publish step fails with exit 4.
+      GH_TOKEN: ${{ github.token }}
     steps:
       # Full history: the appcast commit later lands on top of master.
       - uses: actions/checkout@v4
