@@ -473,7 +473,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         guard let url = notificationBlink.dumpTree() else {
             showError(
                 "Could not capture the Notification Center tree. "
-                    + "Enable Notification Blink first (it grants the Accessibility access this debug dump needs)."
+                    + "It needs Accessibility access — System Settings was opened so you can grant it, "
+                    + "then try again."
             )
             return
         }

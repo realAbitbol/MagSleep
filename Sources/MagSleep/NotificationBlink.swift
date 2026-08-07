@@ -85,7 +85,13 @@ final class NotificationBlink {
     /// tree could not be captured.
     @discardableResult
     func dumpTree() -> URL? {
-        guard hasAccessibilityPermission(prompt: false) else { return nil }
+        // The user explicitly asked — request the permission if it's missing.
+        // If the system dialog is suppressed (e.g. a cached denial in System
+        // Settings), send them to the pane so the dump can actually be granted.
+        guard hasAccessibilityPermission(prompt: true) else {
+            openAccessibilitySettings()
+            return nil
+        }
         guard let snapshot = snapshotNotificationCenter() else { return nil }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -133,13 +139,22 @@ final class NotificationBlink {
             return
         }
         // Prompts the system dialog; if the user refuses there is no callback,
-        // so open the Settings pane as well and leave the toggle off until the
-        // user grants it and retries (or grants it and toggles again).
+        // so open the Settings pane AND explain. The dialog is sometimes
+        // suppressed by a previously cached denial in System Settings, which
+        // leaves the user wondering why nothing happened — hence the alert.
         if hasAccessibilityPermission(prompt: true) {
             startPolling()
             return
         }
         openAccessibilitySettings()
+        let alert = NSAlert()
+        alert.messageText = "MagSleep needs Accessibility access"
+        alert.informativeText = "To read the Notification Center for Notification Blink, "
+            + "MagSleep needs permission in System Settings → Privacy & Security → Accessibility. "
+            + "If the system prompt didn't appear, enable MagSleep there (add it with the + button "
+            + "if needed), then enable Notification Blink again."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     // MARK: - Polling
