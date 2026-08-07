@@ -23,9 +23,14 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     private let modeDisabledItem = NSMenuItem()
 
     private let launchAtLoginItem = NSMenuItem()
+    private let nightScheduleItem = NSMenuItem()
+    private let notificationBlinkItem = NSMenuItem()
+    private let dumpTreeItem = NSMenuItem()
+    private let notificationBlink: NotificationBlink
 
     init(helper: HelperManager) {
         self.helper = helper
+        self.notificationBlink = NotificationBlink(helper: helper)
         super.init()
 
         setupObservers()
@@ -33,6 +38,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         createStatusItem()
         startRefreshTimer()
         startConfigWatcher()
+        notificationBlink.start()
         updateManager.start()
 
         // Defer startup prompts so modal alerts don't block
@@ -171,6 +177,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         if let observer = wakeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        // Remove the selector-based observers too (stateDidChange, helper state).
+        NotificationCenter.default.removeObserver(self)
         // `statusItem = nil` alone does not remove the item from the system
         // status bar — the NSStatusBar keeps a strong reference to it.
         if let item = statusItem {
@@ -188,6 +196,29 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         ) { [weak self] _ in
             self?.refreshHelperState()
         }
+        // Notification-blink enable/deny settles async — refresh the menu.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(notificationBlinkChanged),
+            name: NotificationBlink.stateDidChange,
+            object: notificationBlink
+        )
+        // Helper transient state (e.g. an install starting) drives the
+        // hourglass icon — refresh immediately so it appears.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(helperStateChanged),
+            name: HelperManager.stateDidChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func notificationBlinkChanged() {
+        updateMenuStates()
+    }
+
+    @objc private func helperStateChanged() {
+        updateMenuStates()
     }
 
     private func createStatusItem() {
@@ -275,39 +306,47 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
         launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
         menu.addItem(launchAtLoginItem)
+
+        addSettingsToggles(to: menu)
+
         menu.addItem(NSMenuItem.separator())
 
         // Check for Updates
         let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        updateItem.toolTip = "Check for a newer version now"
         updateItem.target = self
         menu.addItem(updateItem)
 
-        // Report a Problem
-        let reportItem = NSMenuItem(title: "Report a Problem…", action: #selector(reportProblem), keyEquivalent: "")
+        // Report a Problem (opens a URL — no ellipsis: it takes no further input)
+        let reportItem = NSMenuItem(title: "Report a Problem", action: #selector(reportProblem), keyEquivalent: "")
         reportItem.image = NSImage(systemSymbolName: "ant", accessibilityDescription: nil)
+        reportItem.toolTip = "Open the GitHub issue tracker"
         reportItem.target = self
         menu.addItem(reportItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // Buy me a coffee
-        let coffeeItem = NSMenuItem(title: "Buy me a coffee", action: #selector(openCoffee), keyEquivalent: "")
-        coffeeItem.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil)
-        coffeeItem.target = self
-        menu.addItem(coffeeItem)
-
-        // Uninstall
-        let uninstallItem = NSMenuItem(title: "Uninstall MagSleep", action: #selector(uninstall), keyEquivalent: "")
+        // Uninstall (confirmation dialog — ellipsis per HIG)
+        let uninstallItem = NSMenuItem(title: "Uninstall MagSleep…", action: #selector(uninstall), keyEquivalent: "")
         uninstallItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        uninstallItem.toolTip = "Remove the helper and restore the LED to macOS"
         uninstallItem.target = self
         menu.addItem(uninstallItem)
 
         // About
         let aboutItem = NSMenuItem(title: "About MagSleep…", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+        aboutItem.toolTip = "Version and helper status"
         aboutItem.target = self
         menu.addItem(aboutItem)
+
+        // Buy me a coffee — grouped with About, away from the destructive action
+        let coffeeItem = NSMenuItem(title: "Buy me a coffee", action: #selector(openCoffee), keyEquivalent: "")
+        coffeeItem.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil)
+        coffeeItem.toolTip = "Support the developer"
+        coffeeItem.target = self
+        menu.addItem(coffeeItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -317,6 +356,34 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         menu.addItem(quitItem)
 
         self.menu = menu
+    }
+
+    /// The settings toggles (night schedule + notification blink), kept in
+    /// their own builder so `createMenu` stays compact.
+    private func addSettingsToggles(to menu: NSMenu) {
+        nightScheduleItem.title = "Night Schedule"
+        nightScheduleItem.toolTip = "Keep the LED off from sunset to sunrise"
+        nightScheduleItem.image = NSImage(systemSymbolName: "moon.stars", accessibilityDescription: nil)
+        nightScheduleItem.target = self
+        nightScheduleItem.action = #selector(toggleNightSchedule)
+        nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
+        menu.addItem(nightScheduleItem)
+
+        notificationBlinkItem.title = "Notification Blink"
+        notificationBlinkItem.toolTip = "Blink the LED green when a notification arrives (requires Accessibility access)"
+        notificationBlinkItem.image = NSImage(systemSymbolName: "bell.badge", accessibilityDescription: nil)
+        notificationBlinkItem.target = self
+        notificationBlinkItem.action = #selector(toggleNotificationBlink)
+        notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
+        menu.addItem(notificationBlinkItem)
+
+        // Debug aid for tuning the notification-node detector on a specific
+        // Mac: dumps the Notification Center accessibility tree as JSON.
+        dumpTreeItem.title = "Dump Notification Center Tree…"
+        dumpTreeItem.toolTip = "Save the current Notification Center accessibility tree (for tuning Notification Blink)"
+        dumpTreeItem.target = self
+        dumpTreeItem.action = #selector(dumpNotificationTree)
+        menu.addItem(dumpTreeItem)
     }
 
     @objc private func setSleepMode() {
@@ -329,7 +396,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             if success {
                 self.updateMenuStates()
             } else {
-                self.showError(self.failureMessage("Failed to set sleep mode"))
+                self.handleModeFailure("Failed to set sleep mode")
             }
         }
     }
@@ -344,7 +411,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             if success {
                 self.updateMenuStates()
             } else {
-                self.showError(self.failureMessage("Failed to set always off mode"))
+                self.handleModeFailure("Failed to set always off mode")
             }
         }
     }
@@ -355,7 +422,28 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             if success {
                 self.updateMenuStates()
             } else {
-                self.showError(self.failureMessage("Failed to disable"))
+                self.handleModeFailure("Failed to disable")
+            }
+        }
+    }
+
+    /// Surfaces a mode-action failure. When the helper is installed but the
+    /// daemon died mid-session, offer an in-app reconnect (enable() bootstraps
+    /// it) instead of leaving the user stuck until they relaunch the app.
+    private func handleModeFailure(_ fallback: String) {
+        guard helper.isInstalled, !helper.isLoaded else {
+            showError(failureMessage(fallback))
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Helper not running"
+        alert.informativeText = "MagSleep can't reach the helper. Reconnect it to keep controlling the LED?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reconnect")
+        alert.addButton(withTitle: "Later")
+        if alert.runModal() == .alertFirstButtonReturn {
+            helper.enable { [weak self] _ in
+                self?.updateMenuStates()
             }
         }
     }
@@ -371,6 +459,40 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             launchAtLoginItem.state = newState ? .on : .off
         } catch {
             showError("Failed to change launch at login setting: \(error.localizedDescription)")
+        }
+    }
+
+    @objc private func toggleNotificationBlink() {
+        notificationBlink.setEnabled(!notificationBlink.isEnabled)
+        // State settles async after the permission prompt; the observer
+        // refreshes the checkmark. A refused prompt leaves it unchecked.
+        updateMenuStates()
+    }
+
+    @objc private func dumpNotificationTree() {
+        guard let url = notificationBlink.dumpTree() else {
+            showError(
+                "Could not capture the Notification Center tree. "
+                    + "Enable Notification Blink first (it grants the Accessibility access this debug dump needs)."
+            )
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    @objc private func toggleNightSchedule() {
+        guard helper.isLoaded else {
+            showError(failureMessage("Failed to toggle night schedule"))
+            return
+        }
+        let newState = !helper.nightScheduleEnabled
+        helper.setNightSchedule(newState) { [weak self] success in
+            guard let self else { return }
+            if success {
+                self.updateMenuStates()
+            } else {
+                self.showError(self.failureMessage("Failed to toggle night schedule"))
+            }
         }
     }
 
@@ -527,6 +649,15 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
         // Update launch at login
         launchAtLoginItem.state = helper.launchesAtLogin ? .on : .off
+
+        // Night schedule + notification-blink toggles. The blink item is
+        // greyed while the helper can't apply blinks (not loaded or Disabled),
+        // so the toggle can't sit on with no effect. The dump item is only
+        // useful once Accessibility access has been granted (blink enabled).
+        nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
+        notificationBlinkItem.state = notificationBlink.isEnabled ? .on : .off
+        notificationBlinkItem.isEnabled = helper.isLoaded && helper.isEnabled
+        dumpTreeItem.isEnabled = notificationBlink.isEnabled
     }
 
     private func refreshHelperState() {

@@ -8,6 +8,21 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.0] - 2026-08-07
+
+### Added
+
+- **Night Schedule** (optional): a menu toggle that keeps the MagSafe LED off from **sunset to sunrise** — sun times come from macOS (`corebrightnessdiag`), with a 20:00–07:00 fallback when unavailable. Disabled mode always wins
+- **Display-sleep → LED off** (part of Sleep Mode): the LED now turns off when the *display* sleeps (not only at full system sleep) and returns to macOS control on screen wake — via IODisplayWrangler IOKit notifications, which work from the system daemon without a GUI session
+- **Notification Blink** (optional): a menu toggle that blinks the LED green 5 times when a new notification arrives. It reads the Notification Center through the **Accessibility API** (the same mechanism notifier apps like Bark use): enabling it asks for Accessibility access; if refused, the toggle stays off. A "Dump Notification Center Tree…" menu item saves the AX tree for tuning on specific Macs
+- **CI-built releases with provenance**: every release DMG is now built from scratch on GitHub Actions runners — never on a maintainer's machine — with the VirusTotal scan, Sparkle appcast signing, and a Sigstore **build attestation** all performed in CI. Anyone can verify a DMG was GitHub-built (`gh attestation verify MagSleep-x.y.z.dmg --owner realAbitbol`), and every app embeds a `build-info.json` recording who built it and from which commit/workflow run
+
+### Changed
+
+- `make release VERSION=x.y.z` now only does what GitHub needs: it validates the changelog, bumps the version references, commits, tags `vX.Y.Z`, and pushes — the GitHub Actions workflow then builds, scans, signs, attests, and publishes. Local publishing is disabled by design
+- Code-quality refactor: the bounded subprocess wait/drain, unix-socket I/O, and socket request dispatch are extracted into shared, unit-tested `MagSleepCore` helpers (`BoundedProcess`, `UnixSocket`, `SocketCommandHandler`), and the helper install flow is collapsed into a single path
+- Test suite grown to **99 tests** (socket dispatch, notification detection, subprocess bounds, sockaddr layout, plus the existing config/LED/protocol coverage); SwiftLint and the Periphery dead-code scan run in the git pre-commit hook
+
 ## [1.2.10] - 2026-08-05
 
 ### Fixed

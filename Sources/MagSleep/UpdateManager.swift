@@ -18,6 +18,9 @@ final class UpdateManager: NSObject, SPUUpdaterDelegate {
     // can be created from the non-isolated AppKit entry points.
     private var updater: SPUUpdater?
     private let userDriver: SPUStandardUserDriver
+    /// Whether Sparkle started successfully. "Check for Updates…" no-ops
+    /// silently when nil, so expose the failure for the menu to react to.
+    private(set) var isAvailable = false
 
     /// Where the appcast lives. A static URL served over HTTPS; committed to
     /// the repo and served from GitHub raw for the initial test.
@@ -35,16 +38,19 @@ final class UpdateManager: NSObject, SPUUpdaterDelegate {
             userDriver: userDriver,
             delegate: self
         )
+        // Configure the automatic-check settings BEFORE start() so the first
+        // run adopts them (Sparkle recommends configuring before starting).
+        updater.automaticallyChecksForUpdates = true
+        updater.updateCheckInterval = 12 * 60 * 60
         do {
             try updater.start()
         } catch {
             NSLog("MagSleep: Sparkle failed to start: \(error)")
+            isAvailable = false
             return
         }
-        // Twice a day, matching the previous custom checker.
-        updater.automaticallyChecksForUpdates = true
-        updater.updateCheckInterval = 12 * 60 * 60
         self.updater = updater
+        isAvailable = true
     }
 
     /// "Check for Updates…" menu action (shows Sparkle's update UI).

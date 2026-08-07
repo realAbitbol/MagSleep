@@ -123,15 +123,21 @@ final class DaemonConfigLoadFileTests: XCTestCase {
 }
 
 final class SMCPureLogicTests: XCTestCase {
-    func testFourCCEncoding() {
-        XCTAssertEqual(SMC.fourCC("ACLC"), 0x41434C43)
-        XCTAssertEqual(SMC.fourCC("ABCD"), 0x41424344)
-        XCTAssertEqual(SMC.fourCC("abcd"), 0x61626364)
+    func testFourCCEncoding() throws {
+        XCTAssertEqual(try SMC.fourCC("ACLC"), 0x41434C43)
+        XCTAssertEqual(try SMC.fourCC("ABCD"), 0x41424344)
+        XCTAssertEqual(try SMC.fourCC("abcd"), 0x61626364)
     }
 
-    func testFourCCOfMagSafeLEDKey() {
+    func testFourCCOfMagSafeLEDKey() throws {
         XCTAssertEqual(MagSafeLED.key, "ACLC")
-        XCTAssertEqual(SMC.fourCC(MagSafeLED.key), 0x41434C43)
+        XCTAssertEqual(try SMC.fourCC(MagSafeLED.key), 0x41434C43)
+    }
+
+    func testFourCCRejectsWrongLength() {
+        XCTAssertThrowsError(try SMC.fourCC("ACL"))
+        XCTAssertThrowsError(try SMC.fourCC(""))
+        XCTAssertThrowsError(try SMC.fourCC("ACLCL"))
     }
 
     func testMagSafeLEDColorRawValues() {
@@ -200,7 +206,33 @@ final class SocketProtocolEdgeCaseTests: XCTestCase {
     }
 
     func testMaxMessageBytesIs4096() {
-        XCTAssertEqual(SocketResponse.maxMessageBytes, 4096)
+        XCTAssertEqual(MagSleep.maxMessageBytes, 4096)
+    }
+
+    func testParseLineToleratesCRLF() {
+        let line = "{\"id\":\"a\",\"cmd\":\"enable\"}\r\n"
+        XCTAssertNotNil(SocketRequest.parseLine(line))
+    }
+
+    func testParseLineWhitespaceOnlyReturnsNil() {
+        XCTAssertNil(SocketRequest.parseLine("   \n"))
+        XCTAssertNil(SocketResponse.parseLine(" \t \n"))
+    }
+
+    func testParseLineNullRequiredFieldReturnsNil() {
+        XCTAssertNil(SocketRequest.parseLine(#"{"id":"a","cmd":null}"#))
+    }
+
+    func testRequestParseLineToleratesTrailingNewline() {
+        let line = "{\"id\":\"a\",\"cmd\":\"enable\"}\n"
+        XCTAssertNotNil(SocketRequest.parseLine(line))
+    }
+
+    func testEncodeLineFailureFallbackIsParseable() {
+        // Even the impossible encode failure must yield a response the client
+        // can parse (never an unparseable "{}" that hangs until timeout).
+        let line = SocketResponse(id: "x", ok: true, config: nil, error: nil).encodeLine()
+        XCTAssertNotNil(SocketResponse.parseLine(line))
     }
 }
 
@@ -257,6 +289,112 @@ final class LEDModeTests: XCTestCase {
         XCTAssertEqual(LEDMode(rawValue: "alwaysOff"), .alwaysOff)
         XCTAssertEqual(LEDMode(rawValue: "disabled"), .disabled)
         XCTAssertNil(LEDMode(rawValue: "bogus"))
+    }
+}
+
+final class SunScheduleTests: XCTestCase {
+    /// Real output captured from `/usr/libexec/corebrightnessdiag sunschedule`
+    /// on macOS 26.
+    private let sample = """
+    Night Shift Sunset/Sunrise
+    {
+        isDaylight = 0;
+        nextSunrise = "2026-08-08 04:37:06 +0000";
+        nextSunset = "2026-08-08 18:54:29 +0000";
+        previousSunrise = "2026-08-06 04:34:43 +0000";
+        previousSunset = "2026-08-06 18:57:22 +0000";
+        sunrise = "2026-08-07 04:35:54 +0000";
+        sunset = "2026-08-07 18:55:56 +0000";
+    }
+    """
+
+    func testParsesRealOutput() {
+        guard let schedule = SunSchedule(parsing: sample) else {
+            return XCTFail("should parse the real corebrightnessdiag output")
+        }
+        // The tool prints UTC (+0000); compare in UTC regardless of the
+        // machine's timezone.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let sunriseComponents = utcCalendar.dateComponents([.hour, .minute], from: schedule.sunrise)
+        XCTAssertEqual(sunriseComponents.hour, 4)
+        XCTAssertEqual(sunriseComponents.minute, 35)
+        let sunsetComponents = utcCalendar.dateComponents([.hour, .minute], from: schedule.sunset)
+        XCTAssertEqual(sunsetComponents.hour, 18)
+        XCTAssertEqual(sunsetComponents.minute, 55)
+    }
+
+    func testRejectsGarbage() {
+        XCTAssertNil(SunSchedule(parsing: "not a sun schedule"))
+        XCTAssertNil(SunSchedule(parsing: ""))
+    }
+
+    func testRejectsPartialOutput() {
+        XCTAssertNil(SunSchedule(parsing: "sunrise = \"2026-08-07 04:35:54 +0000\";"))
+    }
+
+    func testAnchoredParseIgnoresSiblingKeys() {
+        // nextSunrise/nextSunset are adjacent keys — the anchored parser must
+        // pick exactly the "sunrise"/"sunset" lines regardless of order.
+        let text = """
+        nextSunset = "2026-08-08 18:54:29 +0000";
+        sunrise = "2026-08-07 04:35:54 +0000";
+        sunset = "2026-08-07 18:55:56 +0000";
+        nextSunrise = "2026-08-08 04:37:06 +0000";
+        """
+        guard let schedule = SunSchedule(parsing: text) else { return XCTFail("should parse") }
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        XCTAssertEqual(utc.component(.hour, from: schedule.sunrise), 4)
+        XCTAssertEqual(utc.component(.hour, from: schedule.sunset), 18)
+    }
+}
+
+final class DayNightTests: XCTestCase {
+    /// A fixed schedule: sunrise 04:00 UTC, sunset 20:00 UTC.
+    private func schedule() -> SunSchedule {
+        let text = """
+        sunrise = "2026-08-07 04:00:00 +0000";
+        sunset = "2026-08-07 20:00:00 +0000";
+        """
+        guard let schedule = SunSchedule(parsing: text) else {
+            fatalError("bad fixture")
+        }
+        return schedule
+    }
+
+    private func instant(_ date: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        return formatter.date(from: date)!
+    }
+
+    func testScheduleBoundaries() {
+        let schedule = schedule()
+        XCTAssertTrue(DayNight.isNight(now: instant("2026-08-07 00:00:00 +0000"), schedule: schedule))
+        XCTAssertFalse(DayNight.isNight(now: instant("2026-08-07 12:00:00 +0000"), schedule: schedule))
+        // Exactly at sunrise → day; exactly at sunset → night.
+        XCTAssertFalse(DayNight.isNight(now: instant("2026-08-07 04:00:00 +0000"), schedule: schedule))
+        XCTAssertTrue(DayNight.isNight(now: instant("2026-08-07 20:00:00 +0000"), schedule: schedule))
+        XCTAssertTrue(DayNight.isNight(now: instant("2026-08-07 03:59:00 +0000"), schedule: schedule))
+        XCTAssertTrue(DayNight.isNight(now: instant("2026-08-07 20:01:00 +0000"), schedule: schedule))
+    }
+
+    func testFallbackWindowLocalHours() {
+        func localDate(hour: Int) -> Date {
+            var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            comps.hour = hour
+            return Calendar.current.date(from: comps)!
+        }
+        XCTAssertTrue(DayNight.isNight(now: localDate(hour: 20), schedule: nil))
+        XCTAssertTrue(DayNight.isNight(now: localDate(hour: 23), schedule: nil))
+        XCTAssertTrue(DayNight.isNight(now: localDate(hour: 6), schedule: nil))
+        XCTAssertFalse(DayNight.isNight(now: localDate(hour: 7), schedule: nil)) // end exclusive
+        XCTAssertFalse(DayNight.isNight(now: localDate(hour: 19), schedule: nil))
+        XCTAssertFalse(DayNight.isNight(now: localDate(hour: 12), schedule: nil))
+        // No schedule AND no fallback window → always day.
+        XCTAssertFalse(DayNight.isNight(now: localDate(hour: 23), schedule: nil, fallbackWindow: nil))
     }
 }
 

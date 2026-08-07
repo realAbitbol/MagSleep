@@ -32,24 +32,22 @@ public struct SocketResponse: Codable, Equatable {
         self.error = error
     }
 
-    /// Encodes as a single newline-terminated line, or "{}" on failure.
+    /// Encodes as a single newline-terminated line. The failure fallback is a
+    /// valid error response (never an unparseable sentinel like "{}", which
+    /// would hang the client until its timeout).
     public func encodeLine() -> String {
         let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(self),
-              let line = String(data: data, encoding: .utf8) else {
-            return "{}"
+        if let data = try? encoder.encode(self),
+           let line = String(data: data, encoding: .utf8) {
+            return line + "\n"
         }
-        return line + "\n"
+        return "{\"id\":\"\",\"ok\":false,\"config\":null,\"error\":\"internal error\"}\n"
     }
 
     public static func parseLine(_ line: String) -> SocketResponse? {
         guard let data = line.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(SocketResponse.self, from: data)
     }
-
-    /// Maximum accepted request size in bytes. The daemon closes connections
-    /// that exceed it (defense against a broken or malicious peer).
-    public static let maxMessageBytes = 4096
 }
 
 extension SocketRequest {

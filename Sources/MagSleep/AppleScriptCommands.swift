@@ -84,6 +84,17 @@ final class TurnLEDOnCommand: NSScriptCommand {
 @objc(GetLEDStatusCommand)
 final class GetLEDStatusCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
-        HelperManager().statusDescription
+        // Reuse one HelperManager instead of creating a fresh one per query
+        // (its init performs a blocking socket probe on the main thread).
+        // Refresh from the config file only — no probe — so the status is
+        // current without stalling the UI.
+        let helper = ScriptStatusHelper.shared
+        helper.refreshFromDisk()
+        return helper.statusDescription
     }
+}
+
+/// Shared status source for the AppleScript bridge.
+private enum ScriptStatusHelper {
+    static let shared = HelperManager()
 }

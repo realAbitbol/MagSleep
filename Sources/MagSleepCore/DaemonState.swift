@@ -1,14 +1,18 @@
 import Foundation
 
 /// Commands the app can send to the daemon (via the socket protocol).
-/// The single source of the wire vocabulary: `DaemonConfig.apply` parses them
-/// and `LEDMode.socketCommand` produces them, so the two can never drift.
-/// Internal: only used within this module (tests reach it via `@testable`).
-enum RequestCommand {
-    static let modeSleep = "mode:sleep"
-    static let modeAlwaysOff = "mode:alwaysOff"
-    static let enable = "enable"
-    static let disable = "disable"
+/// The single source of the wire vocabulary: `DaemonConfig.apply` parses them,
+/// `LEDMode.socketCommand` produces the mode ones, and the app + daemon both
+/// reference the rest — so the two sides can never drift.
+public enum RequestCommand {
+    public static let modeSleep = "mode:sleep"
+    public static let modeAlwaysOff = "mode:alwaysOff"
+    public static let enable = "enable"
+    public static let disable = "disable"
+    public static let nightScheduleOn = "nightschedule:on"
+    public static let nightScheduleOff = "nightschedule:off"
+    /// Transient action (not a config mutation): blink the LED green.
+    public static let blink = "blink"
 }
 
 extension DaemonConfig {
@@ -31,6 +35,12 @@ extension DaemonConfig {
         case RequestCommand.disable:
             enabled = false
             return true
+        case RequestCommand.nightScheduleOn:
+            nightScheduleEnabled = true
+            return true
+        case RequestCommand.nightScheduleOff:
+            nightScheduleEnabled = false
+            return true
         default:
             return false
         }
@@ -50,13 +60,25 @@ extension DaemonConfig {
 /// Pure LED-target decision shared by the daemon's mode application.
 /// Kept in the core library so it can be unit-tested.
 public enum LEDTarget {
-    public static func color(for config: DaemonConfig, isSleeping: Bool) -> MagSafeLED.Color {
+    public static func color(
+        for config: DaemonConfig,
+        isSystemSleeping: Bool,
+        isDisplayAsleep: Bool,
+        isNight: Bool
+    ) -> MagSafeLED.Color {
+        // Disabled always wins: the LED belongs to macOS entirely.
         if !config.enabled {
             return .system
         }
+        // Night schedule: LED forced off between sunset and sunrise, even awake.
+        if config.nightScheduleEnabled && isNight {
+            return .off
+        }
         switch config.mode {
         case .sleep:
-            return isSleeping ? .off : .system
+            // Off while the system OR just the display sleeps; macOS control
+            // when both are awake.
+            return (isSystemSleeping || isDisplayAsleep) ? .off : .system
         case .alwaysOff:
             return .off
         }

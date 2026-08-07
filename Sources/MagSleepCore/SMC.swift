@@ -10,6 +10,7 @@ public enum SMC {
         case callFailed(kern_return_t)
         case smcResult(UInt8)
         case unexpectedLayout(Int)
+        case invalidKey(String)
 
         public var description: String {
             switch self {
@@ -22,6 +23,8 @@ public enum SMC {
                     : "SMC returned error \(r)"
             case .unexpectedLayout(let size):
                 return "SMCParamStruct has unexpected size \(size), refusing to talk to the SMC"
+            case .invalidKey(let key):
+                return "SMC key '\(key)' is not exactly 4 characters"
             }
         }
     }
@@ -74,22 +77,17 @@ public enum SMC {
     // swiftlint:enable large_tuple
 
     struct SMCParamStruct {
-        // periphery:ignore - kernel-layout fields; read by AppleSMC via
-        // IOConnectCallStructMethod, which Periphery cannot see.
         var key: UInt32 = 0
         var vers = SMCVersion()
         var pLimitData = SMCPLimitData()
         var keyInfo = SMCKeyInfoData()
-        // periphery:ignore - see `key`.
+        // periphery:ignore - kernel-layout field; never referenced in Swift
+        // (the SMC reads it via IOConnectCallStructMethod).
         var padding: UInt16 = 0
         var result: UInt8 = 0
-        // periphery:ignore - see `key`.
         var status: UInt8 = 0
-        // periphery:ignore - see `key`.
         var data8: UInt8 = 0
-        // periphery:ignore - see `key`.
         var data32: UInt32 = 0
-        // periphery:ignore - see `key`.
         var bytes: SMCBytes = (
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -100,8 +98,12 @@ public enum SMC {
     private static let kSMCWriteKey: UInt8 = 6
     private static let kSMCGetKeyInfo: UInt8 = 9
 
-    public static func fourCC(_ code: String) -> UInt32 {
-        precondition(code.utf8.count == 4, "SMC keys are 4 characters")
+    /// Four-character SMC key → UInt32. Throws instead of crashing the daemon
+    /// on a bad key (precondition would trap in release).
+    public static func fourCC(_ code: String) throws -> UInt32 {
+        guard code.utf8.count == 4 else {
+            throw SMCError.invalidKey(code)
+        }
         return code.utf8.reduce(0) { ($0 << 8) | UInt32($1) }
     }
 
@@ -144,7 +146,7 @@ public enum SMC {
     public static func keyInfo(_ key: String) throws -> (size: UInt32, type: String) {
         try withConnection { connection in
             var request = SMCParamStruct()
-            request.key = fourCC(key)
+            request.key = try fourCC(key)
             request.data8 = kSMCGetKeyInfo
             let reply = try call(connection, request)
             let t = reply.keyInfo.dataType
@@ -163,12 +165,12 @@ public enum SMC {
     public static func writeByte(_ key: String, _ value: UInt8) throws {
         try withConnection { connection in
             var info = SMCParamStruct()
-            info.key = fourCC(key)
+            info.key = try fourCC(key)
             info.data8 = kSMCGetKeyInfo
             let infoReply = try call(connection, info)
 
             var request = SMCParamStruct()
-            request.key = fourCC(key)
+            request.key = try fourCC(key)
             request.data8 = kSMCWriteKey
             request.keyInfo.dataSize = infoReply.keyInfo.dataSize
             request.bytes.0 = value
@@ -215,7 +217,7 @@ public enum SMC {
 
         public func writeByte(_ key: String, _ value: UInt8) throws {
             var request = SMCParamStruct()
-            request.key = fourCC(key)
+            request.key = try fourCC(key)
             request.data8 = kSMCWriteKey
             request.keyInfo.dataSize = try keyInfoSize(key)
             request.bytes.0 = value
@@ -225,7 +227,7 @@ public enum SMC {
         private func keyInfoSize(_ key: String) throws -> UInt32 {
             if let size = keyInfoCache[key] { return size }
             var request = SMCParamStruct()
-            request.key = fourCC(key)
+            request.key = try fourCC(key)
             request.data8 = kSMCGetKeyInfo
             let reply = try call(request)
             keyInfoCache[key] = reply.keyInfo.dataSize

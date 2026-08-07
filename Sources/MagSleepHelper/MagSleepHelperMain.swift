@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import IOKit
 import IOKit.pwr_mgt
@@ -29,14 +30,35 @@ private enum PowerMessage {
     static let systemHasPoweredOn: UInt32 = 0xe0000300
 }
 
+/// IOKit display-power message IDs (IOMessage.h, `iokit_common_msg(...)`):
+/// delivered to interest clients of the IODisplayWrangler service.
+private enum DisplayPowerMessage {
+    /// Fires for display dim, then again for display power off.
+    static let deviceWillPowerOff: UInt32 = 0xe0000210
+    static let deviceHasPoweredOn: UInt32 = 0xe0000230
+}
+
 final class PowerDaemon {
     private let log = Logger(subsystem: "com.magsleep.helper", category: "daemon")
     private var config = DaemonConfig.default
     private var isSleeping = false
+    /// Display (not full-system) sleep: LED off in Sleep Mode while the screen
+    /// is asleep. Fed by IODisplayWrangler interest notifications.
+    private var isDisplayAsleep = false
+    /// Sunset/sunrise from `corebrightnessdiag sunschedule` (best-effort);
+    /// nil falls back to a 20:00–07:00 window. Fed on a 30-min timer.
+    private var sunSchedule: SunSchedule?
+    /// How long `corebrightnessdiag` may run before the fetch is abandoned
+    /// (a hang must not leak a stuck thread every 30 minutes).
+    private static let sunScheduleTimeout: TimeInterval = 10
 
     private var rootPort: io_connect_t = 0
     private var notificationPort: IONotificationPortRef?
     private var notifierObject: io_object_t = 0
+    // periphery:ignore - retained for lifetime (the IONotificationPort must
+    // stay alive for the display-sleep callbacks); never read.
+    private var displayNotificationPort: IONotificationPortRef?
+    private var displayNotifier: io_object_t = 0
     private var signalSources: [DispatchSourceSignal] = []
     private var socketServer: SocketServer?
     // periphery:ignore - retained for lifetime (the run loop also holds these,
@@ -44,6 +66,8 @@ final class PowerDaemon {
     private var powerSourceSource: CFRunLoopSource?
     // periphery:ignore - see `powerSourceSource`.
     private var reassertTimer: Timer?
+    // periphery:ignore - see `powerSourceSource`.
+    private var sunScheduleTimer: Timer?
     /// Persistent SMC connection (opened lazily on first apply; retried on failure).
     private var smc: SMC.Connection?
     /// Throttles repeated SMC failure logs to one per distinct message.
@@ -72,6 +96,8 @@ final class PowerDaemon {
         registerForPowerNotifications()
         startSocketServer()
         registerForPowerSourceChanges()
+        registerForDisplaySleepNotifications()
+        startSunScheduleTimer()
 
         // Slow re-assert timer: guarantees the LED converges back to the active
         // mode within a few seconds even if macOS changes it after our
@@ -79,6 +105,10 @@ final class PowerDaemon {
         // A single-byte SMC write every 3s is negligible; mode-change latency is
         // unaffected (requests are still applied instantly via the socket).
         startReassertTimer()
+
+        // Apply the active mode immediately rather than waiting up to 3s for
+        // the first reassert tick (alwaysOff / night schedule at startup).
+        applyMode()
 
         // Run the run loop; all events fire here.
         RunLoop.main.run()
@@ -90,8 +120,11 @@ final class PowerDaemon {
         }
         if server.start() {
             socketServer = server
+            log.info("socket server started")
         } else {
-            log.error("failed to start socket server")
+            // Keep the instance so the reassert timer can retry the bind.
+            socketServer = server
+            log.error("failed to start socket server; will retry")
         }
     }
 
@@ -112,12 +145,23 @@ final class PowerDaemon {
         let url = URL(fileURLWithPath: MagSleep.configFilePath)
         let exists = FileManager.default.fileExists(atPath: url.path)
 
-        config = DaemonConfig.load(from: url)
+        // Decode, tracking whether the on-disk file was actually readable so a
+        // corrupt file is healed back to defaults instead of staying broken.
+        var decodedOK = false
+        var loaded = DaemonConfig.default
+        if let data = try? Data(contentsOf: url),
+           let config = try? PropertyListDecoder().decode(DaemonConfig.self, from: data) {
+            loaded = config
+            decodedOK = true
+        }
+        config = loaded
         log.info("config loaded: mode=\(self.config.mode.rawValue), enabled=\(self.config.enabled)")
+        log.info("night schedule: \(self.config.nightScheduleEnabled ? "on" : "off")")
 
         // Persist the initial state so the app (which runs as a user) can read
-        // the current mode/enabled even if no request has been sent yet.
-        if !exists {
+        // the current mode/enabled even if no request has been sent yet — and
+        // rewrite a missing OR corrupt config so disk matches memory.
+        if !exists || !decodedOK {
             saveConfig(config)
         }
 
@@ -160,16 +204,28 @@ final class PowerDaemon {
             return SocketResponse(id: request.id, ok: false, config: nil, error: "unauthorized").encodeLine()
         }
         log.info("processing request: \(request.cmd, privacy: .public)")
-        if config.apply(request.cmd) {
+        // Pure dispatch: response / blink / config decision (unit-tested).
+        let outcome = SocketCommandHandler.handle(
+            request: request,
+            isAuthorized: true,
+            canBlink: config.enabled && !isSleeping && !isDisplayAsleep,
+            currentConfig: config
+        )
+        if outcome.shouldBlink {
+            _ = handleBlinkRequest()
+        }
+        if let newConfig = outcome.newConfig {
+            config = newConfig
             saveConfig(config)
             applyMode()
             if !config.enabled {
                 log.info("disabled, LED under macOS control")
             }
-            return SocketResponse(id: request.id, ok: true, config: config, error: nil).encodeLine()
         }
-        log.error("unknown request: \(request.cmd, privacy: .public)")
-        return SocketResponse(id: request.id, ok: false, config: nil, error: "unknown command").encodeLine()
+        if !outcome.response.ok {
+            log.error("request failed: \(outcome.response.error ?? "unknown", privacy: .public)")
+        }
+        return outcome.response.encodeLine()
     }
 
     /// Accepts requests from root and from the current console user only.
@@ -179,6 +235,8 @@ final class PowerDaemon {
         if peerUID == 0 { return true }
         var consoleUID: uid_t = 0
         var consoleGID: gid_t = 0
+        // Imports as CFString? (Swift-managed, +0) on this SDK — no manual
+        // release needed.
         guard SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) != nil else { return false }
         return peerUID == consoleUID
     }
@@ -189,26 +247,85 @@ final class PowerDaemon {
     /// on requests, and on power-source changes (to re-assert alwaysOff across
     /// external LED changes like plug-in / charging-state updates).
     private func applyMode() {
-        let smc: SMC.Connection
-        if let existing = self.smc {
-            smc = existing
-        } else {
-            do {
-                smc = try SMC.Connection()
-                self.smc = smc
-            } catch {
-                logThrottled("SMC connection failed: \(error)")
-                return
+        let target = LEDTarget.color(
+            for: config,
+            isSystemSleeping: isSleeping,
+            isDisplayAsleep: isDisplayAsleep,
+            isNight: isNight()
+        )
+        setLED(target)
+    }
+
+    /// Returns the persistent SMC connection, opening it lazily on first use
+    /// (retried on failure).
+    private func smcConnection() -> SMC.Connection? {
+        if let existing = smc {
+            return existing
+        }
+        do {
+            let connection = try SMC.Connection()
+            smc = connection
+            return connection
+        } catch {
+            logThrottled("SMC connection failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Writes a color to the LED, logging throttled on failure. A failed write
+    /// drops the connection so the next applyMode reopens it (a stale
+    /// io_connect_t after an AppleSMC restart would otherwise fail silently
+    /// forever).
+    private func setLED(_ color: MagSafeLED.Color) {
+        guard let connection = smcConnection() else { return }
+        do {
+            try MagSafeLED.set(color, using: connection)
+        } catch {
+            smc = nil
+            logThrottled("failed to set LED: \(error)")
+        }
+    }
+
+    // MARK: - Notification Blink
+
+    /// Monotonic token so overlapping blink requests cancel each other's
+    /// queued writes instead of interleaving arbitrarily.
+    private var blinkGeneration = 0
+
+    /// Notification alert: 5 quick green blinks (~150 ms on / off), then
+    /// restore the mode's LED target. **Disabled always wins** — the LED stays
+    /// under macOS control and gets zero SMC traffic while disabled.
+    /// Returns false (so the app sees an honest ack) when the blink was
+    /// skipped.
+    private func handleBlinkRequest() -> Bool {
+        guard config.enabled else { return false }
+        // Skip while the display is asleep — blinking into a dark screen is
+        // pointless (and the reassert timer would fight it).
+        guard !isSleeping, !isDisplayAsleep else { return false }
+
+        blinkGeneration += 1
+        let generation = blinkGeneration
+        let sequence: [MagSafeLED.Color] = (0..<5).flatMap { _ in [.green, .off] }
+        for (index, color) in sequence.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.15) { [weak self] in
+                // A newer blink supersedes this one; a disable or sleep mid-
+                // sequence stops it so the "disabled always wins" invariant
+                // holds even during the blink.
+                guard let self,
+                      self.blinkGeneration == generation,
+                      self.config.enabled,
+                      !self.isSleeping,
+                      !self.isDisplayAsleep else { return }
+                self.setLED(color)
             }
         }
-
-        let target = LEDTarget.color(for: config, isSleeping: isSleeping)
-
-        do {
-            try MagSafeLED.set(target, using: smc)
-        } catch {
-            logThrottled("failed to apply mode: \(error)")
+        // Restore the active mode target after the blink finishes (the 3s
+        // re-assert timer would converge it anyway).
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(sequence.count) * 0.15 + 0.1) { [weak self] in
+            guard let self, self.blinkGeneration == generation else { return }
+            self.applyMode()
         }
+        return true
     }
 
     /// Logs SMC failures without spamming the unified log on every 3s tick.
@@ -255,12 +372,18 @@ final class PowerDaemon {
         case PowerMessage.systemWillSleep:
             log.info("system will sleep; turning MagSafe LED off")
             isSleeping = true
+            isDisplayAsleep = true
             applyMode()
             IOAllowPowerChange(rootPort, notificationID)
 
         case PowerMessage.systemHasPoweredOn:
             log.info("system woke; handing MagSafe LED back to macOS")
             isSleeping = false
+            // A system wake implies the display is (or is about to be) on.
+            // Clearing display-asleep here also heals the case where the
+            // IODisplayWrangler's wake message was silently dropped, which
+            // would otherwise leave the LED stuck off.
+            isDisplayAsleep = false
             applyMode()
 
         default:
@@ -295,6 +418,125 @@ final class PowerDaemon {
         // While disabled the LED belongs entirely to macOS — no SMC traffic.
         guard config.enabled else { return }
         applyMode()
+    }
+
+    // MARK: - Display Sleep (IODisplayWrangler interest notifications)
+
+    /// Registers for display power events on the IODisplayWrangler service.
+    /// This is the mechanism that works from a system daemon with no GUI
+    /// session: NSWorkspace screen notifications and CGDisplay callbacks both
+    /// require an NSApplication/WindowServer connection and silently drop
+    /// events in a bare CLI daemon, whereas IOKit interest notifications do
+    /// not. The daemon already runs a CFRunLoop, so the notification port's
+    /// run-loop source slots straight in.
+    private func registerForDisplaySleepNotifications() {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceNameMatching("IODisplayWrangler"))
+        guard service != 0 else {
+            log.error("IODisplayWrangler service not found; display-sleep handling disabled")
+            return
+        }
+        let callback: IOServiceInterestCallback = { refcon, _, messageType, _ in
+            guard let refcon else { return }
+            let daemon = Unmanaged<PowerDaemon>.fromOpaque(refcon).takeUnretainedValue()
+            daemon.handleDisplayPowerMessage(messageType: messageType)
+        }
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else {
+            IOObjectRelease(service)
+            log.error("IONotificationPortCreate failed; display-sleep handling disabled")
+            return
+        }
+        displayNotificationPort = port
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let status = IOServiceAddInterestNotification(
+            port,
+            service,
+            "IOGeneralInterest",
+            callback,
+            selfPtr,
+            &displayNotifier
+        )
+        if status == KERN_SUCCESS {
+            // IONotificationPortGetRunLoopSource returns a borrowed (+0)
+            // reference; the port (displayNotificationPort) retains the source
+            // for the daemon's lifetime, so no extra retain is needed.
+            if let source = IONotificationPortGetRunLoopSource(port) {
+                CFRunLoopAddSource(CFRunLoopGetMain(), source.takeUnretainedValue(), .defaultMode)
+            }
+            log.info("registered for display power notifications")
+        } else {
+            log.error("IOServiceAddInterestNotification failed: \(status)")
+        }
+        IOObjectRelease(service)
+    }
+
+    private func handleDisplayPowerMessage(messageType: UInt32) {
+        switch messageType {
+        case DisplayPowerMessage.deviceWillPowerOff:
+            // Fires for display dim, then again for display power off — either
+            // means the screen is no longer showing; treat both as asleep.
+            isDisplayAsleep = true
+            applyMode()
+        case DisplayPowerMessage.deviceHasPoweredOn:
+            isDisplayAsleep = false
+            applyMode()
+        default:
+            break
+        }
+    }
+
+    // MARK: - Night Schedule (sunset → sunrise)
+
+    /// Fetches the sun schedule now and every 30 minutes (the re-assert timer
+    /// handles the night boundary itself — this only refreshes sunrise/sunset).
+    private func startSunScheduleTimer() {
+        fetchSunSchedule()
+        let timer = Timer(timeInterval: 30 * 60, repeats: true) { [weak self] _ in
+            self?.fetchSunSchedule()
+        }
+        RunLoop.main.add(timer, forMode: .default)
+        sunScheduleTimer = timer
+    }
+
+    private func fetchSunSchedule() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            // The diagnostic tool moved from /usr/bin to /usr/libexec between
+            // macOS releases — probe both, newest first.
+            let candidates = ["/usr/libexec/corebrightnessdiag", "/usr/bin/corebrightnessdiag"]
+            let path = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+            guard let path else {
+                DispatchQueue.main.async {
+                    self?.log.info("corebrightnessdiag unavailable; using fallback night window")
+                }
+                return
+            }
+
+            // BoundedProcess handles the wait + drain + SIGKILL escalation, so
+            // a hung tool can never leak a thread or pipe every 30 minutes.
+            let result = BoundedProcess.run(
+                executableURL: URL(fileURLWithPath: path),
+                arguments: ["sunschedule"],
+                timeout: Self.sunScheduleTimeout
+            )
+            let text = String(data: result.stdout, encoding: .utf8) ?? ""
+            let parsed = result.timedOut ? nil : SunSchedule(parsing: text)
+            DispatchQueue.main.async {
+                self?.sunSchedule = parsed
+                if parsed != nil {
+                    self?.log.info("sun schedule loaded; night enforcement active")
+                } else if result.timedOut {
+                    self?.log.info("corebrightnessdiag timed out; using fallback night window")
+                }
+                // A refresh may cross a night boundary — converge the LED.
+                self?.applyMode()
+            }
+        }
+    }
+
+    /// Whether it is currently night: between sunset and sunrise, falling back
+    /// to a 20:00–07:00 local window when the sun schedule is unavailable (no
+    /// location/WiFi, or the private tool is missing on a future macOS).
+    private func isNight(now: Date = Date()) -> Bool {
+        DayNight.isNight(now: now, schedule: sunSchedule)
     }
 
     // MARK: - Signal Handlers
@@ -332,7 +574,9 @@ final class PowerDaemon {
     private func startReassertTimer() {
         let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
             self?.reassertActiveMode()
-            // Cheap stat; rebinds the socket if /var/run was cleaned out.
+            // Retry a failed initial bind (start() is idempotent — it guards
+            // on listenFD < 0), and rebind if /var/run was cleaned out.
+            self?.socketServer?.start()
             self?.socketServer?.ensureSocketFileExists()
         }
         RunLoop.main.add(timer, forMode: .default)
@@ -347,10 +591,15 @@ final class PowerDaemon {
         guard config.enabled else { return }
         // While awake in Sleep Mode the LED is already under macOS control
         // (the target is .system); re-writing it every tick is pure SMC churn
-        // (~28,800 writes/day). Only Always Off needs the watchdog (macOS
-        // flips the LED on plug/unplug), plus the window while the Mac is
-        // asleep in Sleep Mode.
-        if config.mode == .sleep && !isSleeping { return }
+        // (~28,800 writes/day). Only these cases need the watchdog: Always
+        // Off (macOS flips the LED on plug/unplug), the display or system
+        // asleep in Sleep Mode, and the active night schedule.
+        if config.mode == .sleep
+            && !isSleeping
+            && !isDisplayAsleep
+            && !(config.nightScheduleEnabled && isNight()) {
+            return
+        }
         applyMode()
     }
 

@@ -33,6 +33,18 @@ final class DaemonConfigTests: XCTestCase {
         XCTAssertFalse(config.enabled)
     }
 
+    func testApplyNightScheduleOn() {
+        var config = DaemonConfig()
+        XCTAssertTrue(config.apply(RequestCommand.nightScheduleOn))
+        XCTAssertTrue(config.nightScheduleEnabled)
+    }
+
+    func testApplyNightScheduleOff() {
+        var config = DaemonConfig(nightScheduleEnabled: true)
+        XCTAssertTrue(config.apply(RequestCommand.nightScheduleOff))
+        XCTAssertFalse(config.nightScheduleEnabled)
+    }
+
     func testApplyUnknownCommandLeavesConfigUnchanged() {
         var config = DaemonConfig(mode: .alwaysOff, enabled: true)
         XCTAssertFalse(config.apply("bogus-command"))
@@ -83,6 +95,49 @@ final class DaemonConfigDecodingTests: XCTestCase {
         XCTAssertNil(try? PropertyListDecoder().decode(DaemonConfig.self, from: Data(xml.utf8)))
     }
 
+    func testMissingNightScheduleKeyDefaultsToFalse() throws {
+        // A pre-1.3 config has no nightScheduleEnabled key — it must decode
+        // (with the flag off) rather than failing and resetting the config.
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+            <key>mode</key><string>alwaysOff</string>
+            <key>enabled</key><true/>
+        </dict></plist>
+        """
+        let config = try PropertyListDecoder().decode(DaemonConfig.self, from: Data(xml.utf8))
+        XCTAssertEqual(config.mode, .alwaysOff)
+        XCTAssertTrue(config.enabled)
+        XCTAssertFalse(config.nightScheduleEnabled)
+    }
+
+    func testDecodeNightScheduleEnabled() throws {
+        let config = DaemonConfig(nightScheduleEnabled: true)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .xml
+        let data = try encoder.encode(config)
+        let decoded = try PropertyListDecoder().decode(DaemonConfig.self, from: data)
+        XCTAssertTrue(decoded.nightScheduleEnabled)
+    }
+
+    func testDecodeIgnoresUnknownKeys() throws {
+        // A future config with extra keys must still decode (forward compat).
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+            <key>mode</key><string>alwaysOff</string>
+            <key>enabled</key><true/>
+            <key>futureFeature</key><string>whatever</string>
+        </dict></plist>
+        """
+        let config = try PropertyListDecoder().decode(DaemonConfig.self, from: Data(xml.utf8))
+        XCTAssertEqual(config.mode, .alwaysOff)
+        XCTAssertTrue(config.enabled)
+        XCTAssertFalse(config.nightScheduleEnabled)
+    }
+
     func testRoundTrip() throws {
         let config = DaemonConfig(mode: .alwaysOff, enabled: false)
         let encoder = PropertyListEncoder()
@@ -114,20 +169,109 @@ final class DaemonConfigDecodingTests: XCTestCase {
 final class LEDTargetTests: XCTestCase {
     func testDisabledAlwaysHandsControlToSystem() {
         let config = DaemonConfig(enabled: false)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: true), .system)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: false), .system)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: true, isDisplayAsleep: true, isNight: true),
+            .system
+        )
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: false),
+            .system
+        )
     }
 
     func testSleepMode() {
         let config = DaemonConfig(mode: .sleep, enabled: true)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: true), .off)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: false), .system)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: true, isDisplayAsleep: false, isNight: false),
+            .off
+        )
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: true, isNight: false),
+            .off
+        )
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: false),
+            .system
+        )
     }
 
     func testAlwaysOffMode() {
         let config = DaemonConfig(mode: .alwaysOff, enabled: true)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: true), .off)
-        XCTAssertEqual(LEDTarget.color(for: config, isSleeping: false), .off)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: true, isDisplayAsleep: false, isNight: false),
+            .off
+        )
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: false),
+            .off
+        )
+    }
+
+    func testNightScheduleTurnsOffEvenAwake() {
+        let config = DaemonConfig(mode: .sleep, enabled: true, nightScheduleEnabled: true)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: true),
+            .off
+        )
+    }
+
+    func testNightScheduleDayBehavesNormally() {
+        let config = DaemonConfig(mode: .sleep, enabled: true, nightScheduleEnabled: true)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: false),
+            .system
+        )
+    }
+
+    func testNightScheduleDisabledWins() {
+        let config = DaemonConfig(mode: .sleep, enabled: false, nightScheduleEnabled: true)
+        XCTAssertEqual(
+            LEDTarget.color(for: config, isSystemSleeping: false, isDisplayAsleep: false, isNight: true),
+            .system
+        )
+    }
+
+    func testPrecedenceMatrix() {
+        // Disabled beats everything, even at night in alwaysOff.
+        XCTAssertEqual(
+            LEDTarget.color(
+                for: DaemonConfig(mode: .alwaysOff, enabled: false, nightScheduleEnabled: true),
+                isSystemSleeping: true, isDisplayAsleep: true, isNight: true
+            ),
+            .system
+        )
+        // Night beats mode in alwaysOff (off either way — pinned).
+        XCTAssertEqual(
+            LEDTarget.color(
+                for: DaemonConfig(mode: .alwaysOff, enabled: true, nightScheduleEnabled: true),
+                isSystemSleeping: false, isDisplayAsleep: false, isNight: true
+            ),
+            .off
+        )
+        // Night + sleep mode + display asleep: night wins.
+        XCTAssertEqual(
+            LEDTarget.color(
+                for: DaemonConfig(mode: .sleep, enabled: true, nightScheduleEnabled: true),
+                isSystemSleeping: false, isDisplayAsleep: true, isNight: true
+            ),
+            .off
+        )
+        // Both sleeping flags together in sleep mode.
+        XCTAssertEqual(
+            LEDTarget.color(
+                for: DaemonConfig(mode: .sleep, enabled: true),
+                isSystemSleeping: true, isDisplayAsleep: true, isNight: false
+            ),
+            .off
+        )
+        // Day + sleep mode + display asleep → off (display-sleep feature).
+        XCTAssertEqual(
+            LEDTarget.color(
+                for: DaemonConfig(mode: .sleep, enabled: true),
+                isSystemSleeping: false, isDisplayAsleep: true, isNight: false
+            ),
+            .off
+        )
     }
 }
 
@@ -137,6 +281,18 @@ final class SMCLayoutTests: XCTestCase {
     /// corrupt data — this test guards against compiler/ABI regressions.
     func testSMCParamStructStrideIs80() {
         XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.stride, 80)
+    }
+
+    func testSMCParamFieldOffsets() {
+        // The kernel reads FIXED offsets; the stride alone could mask padding
+        // shifts, so pin the layout the AppleSMC user client expects.
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.key), 0)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.keyInfo), 28)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.result), 40)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.status), 41)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.data8), 42)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.data32), 44)
+        XCTAssertEqual(MemoryLayout<SMC.SMCParamStruct>.offset(of: \.bytes), 48)
     }
 }
 

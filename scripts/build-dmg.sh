@@ -15,6 +15,17 @@ DMG_NAME="MagSleep-${VERSION}"
 DMG="$DIST/${DMG_NAME}.dmg"
 STAGE="$DIST/dmg-stage"
 VOLUME_NAME="MagSleep"
+MOUNT_DIR=""
+
+# Clean up the mounted image and temp files on any failure path, so a retry
+# never hits "resource busy" or leaves a stale DMG behind.
+cleanup() {
+    if [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ]; then
+        hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$DIST/${DMG_NAME}.temp.dmg" "$STAGE"
+}
+trap cleanup EXIT
 
 if [ ! -d "$APP" ]; then
     echo "error: $APP not found — run scripts/build-app.sh first" >&2

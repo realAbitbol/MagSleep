@@ -46,9 +46,10 @@ install-hooks:
 notarize: $(APP)
 	scripts/notarize.sh
 
-# Creates a tagged release: tests, builds the DMG, updates README/Makefile
-# version references, commits, tags vX.Y.Z, pushes branch + tag, and publishes
-# the GitHub Release with the DMG (requires `gh` authenticated). See
-# scripts/release.sh.
+# CI-only release driver: validates the changelog, bumps the README/Makefile
+# version references, commits, tags vX.Y.Z, and pushes — the GitHub Actions
+# workflow (.github/workflows/release.yml) then builds from scratch on a
+# runner, VirusTotal-scans, signs the appcast, attests, and publishes. No
+# local build or publish ever happens (see scripts/release.sh).
 release:
 	scripts/release.sh $(VERSION)

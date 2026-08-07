@@ -20,6 +20,12 @@ if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
     exit 2
 fi
 
+# The permalink is derivable from the local sha256 alone, so it is computed
+# before the key check — even a skipped scan still yields a proof link.
+SHA="$(shasum -a 256 "$FILE" | awk '{print $1}')"
+echo "sha256=$SHA"
+echo "permalink=https://www.virustotal.com/gui/file/$SHA/detection"
+
 if [ -z "${VIRUSTOTAL_API_KEY:-}" ]; then
     echo "status=skipped"
     echo "reason=VIRUSTOTAL_API_KEY not set"
@@ -27,10 +33,6 @@ if [ -z "${VIRUSTOTAL_API_KEY:-}" ]; then
 fi
 
 API="https://www.virustotal.com/api/v3"
-
-SHA="$(shasum -a 256 "$FILE" | awk '{print $1}')"
-echo "sha256=$SHA"
-echo "permalink=https://www.virustotal.com/gui/file/$SHA/detection"
 
 # Parse a single field out of a VirusTotal JSON response.
 json_field() {
@@ -47,7 +49,7 @@ print(lookup(json.loads(sys.argv[1]), sys.argv[2]))
 ' "$1" "$2" 2>/dev/null || true
 }
 
-UPLOAD_JSON="$(curl -sS -X POST \
+UPLOAD_JSON="$(curl -sS --max-time 30 -X POST \
     -H "x-apikey: $VIRUSTOTAL_API_KEY" \
     -F "file=@$FILE" \
     "$API/files" 2>/dev/null || true)"
@@ -59,16 +61,29 @@ if [ -z "$ANALYSIS_ID" ]; then
     exit 0
 fi
 
-# Poll until completed. Public API allows 4 req/min; polling every 20s stays
-# under it. The 15-poll cap (~5 min) is a safety valve only reachable during a
-# VirusTotal outage — a normal analysis finishes in ~1-2 min.
-POLLS=15
+# Poll until completed. Public API allows 4 req/min; polling every 25s keeps
+# comfortably under it (upload + polls = ~2.4 req/min). The 12-poll cap (~5
+# min) is a safety valve only reachable during a VirusTotal outage — a normal
+# analysis finishes in ~1-2 min. Transient network errors yield an empty
+# result: three consecutive empties abort early instead of wasting the window.
+POLLS=12
+EMPTY_IN_A_ROW=0
 for _ in $(seq 1 "$POLLS"); do
-    sleep 20
-    RESULT="$(curl -sS \
+    sleep 25
+    RESULT="$(curl -sS --max-time 30 \
         -H "x-apikey: $VIRUSTOTAL_API_KEY" \
         "$API/analyses/$ANALYSIS_ID" 2>/dev/null || true)"
     STATUS="$(json_field "$RESULT" "data.attributes.status")"
+    if [ -z "$STATUS" ]; then
+        EMPTY_IN_A_ROW=$((EMPTY_IN_A_ROW + 1))
+        if [ "$EMPTY_IN_A_ROW" -ge 3 ]; then
+            echo "status=submitted"
+            echo "reason=analysis unreachable (VirusTotal network errors)"
+            exit 0
+        fi
+        continue
+    fi
+    EMPTY_IN_A_ROW=0
     if [ "$STATUS" = "completed" ]; then
         python3 - "$RESULT" <<'PY'
 import json, sys
@@ -78,7 +93,7 @@ total = sum(stats.values())
 malicious = int(stats.get("malicious", 0))
 print(f"status=completed")
 print(f"verdict={malicious} malicious / {total} engines")
-print(f"badge={quote(f'{malicious} malicious/{total}')}")
+print(f"badge={quote(f'{malicious} malicious/{total}', safe='')}")
 PY
         exit 0
     fi

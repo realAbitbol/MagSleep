@@ -99,40 +99,42 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         let mode: OperationMode = alwaysOffCard.isSelected ? .alwaysOff : .sleep
         installButton.isEnabled = false
         cancelAndQuitButton.isEnabled = false
-        statusLabel.isHidden = true
+        statusLabel.isHidden = false
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.stringValue = "Installing the helper…"
 
+        // HelperManager delivers completions on the main queue — no extra hop.
         helper.enable { [weak self] success in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if success {
-                    // Register Launch at Login only after the helper is
-                    // confirmed installed — a declined install must not leave
-                    // a login item pointing at a helper-less app.
-                    if self.launchAtLoginSwitch.state == .on, self.helper.canManageLaunchAtLogin {
-                        try? self.helper.setLaunchesAtLogin(true)
-                    }
-                    self.helper.setMode(mode) { _ in
-                        self.finish()
-                    }
-                } else {
-                    // Mandatory: a declined install keeps the window open with
-                    // the error — the user must retry or quit. A canceled admin
-                    // prompt is a user decision, not a failure: say so instead
-                    // of reporting "unknown error".
-                    self.installButton.isEnabled = true
-                    self.cancelAndQuitButton.isEnabled = true
-                    self.statusLabel.isHidden = false
-                    let message: String
-                    if self.helper.lastAttemptWasCancelled {
-                        message = "Installation was canceled. MagSleep needs the helper to function — "
-                            + "retry Install & Start, or Cancel & Quit."
-                    } else if let detail = self.helper.lastError {
-                        message = "Could not install the helper: \(detail)"
-                    } else {
-                        message = "Could not install the helper."
-                    }
-                    self.statusLabel.stringValue = message
+            guard let self else { return }
+            if success {
+                // Register Launch at Login only after the helper is confirmed
+                // installed — a declined install must not leave a login item
+                // pointing at a helper-less app.
+                if self.launchAtLoginSwitch.state == .on, self.helper.canManageLaunchAtLogin {
+                    try? self.helper.setLaunchesAtLogin(true)
                 }
+                self.helper.setMode(mode) { [weak self] _ in
+                    self?.finish()
+                }
+            } else {
+                // Mandatory: a declined install keeps the window open with the
+                // error — the user must retry or quit. A canceled admin prompt
+                // is a user decision, not a failure: say so instead of
+                // reporting "unknown error".
+                self.installButton.isEnabled = true
+                self.cancelAndQuitButton.isEnabled = true
+                self.statusLabel.isHidden = false
+                self.statusLabel.textColor = .systemRed
+                let message: String
+                if self.helper.lastAttemptWasCancelled {
+                    message = "Installation was canceled. MagSleep needs the helper to function — "
+                        + "retry Install & Start, or Cancel & Quit."
+                } else if let detail = self.helper.lastError {
+                    message = "Could not install the helper: \(detail)"
+                } else {
+                    message = "Could not install the helper."
+                }
+                self.statusLabel.stringValue = message
             }
         }
     }
@@ -191,12 +193,17 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         behaviorLabel.font = .systemFont(ofSize: 11, weight: .semibold)
         behaviorLabel.textColor = .secondaryLabelColor
 
-        launchAtLoginSwitch.state = helper.canManageLaunchAtLogin ? .on : .off
+        // Opt-in: default the switch OFF — a login item should never be
+        // created without an explicit choice.
+        launchAtLoginSwitch.state = .off
         launchAtLoginSwitch.isEnabled = helper.canManageLaunchAtLogin
         launchAtLoginLabel.font = .systemFont(ofSize: 13)
         launchAtLoginLabel.textColor = helper.canManageLaunchAtLogin ? .labelColor : .tertiaryLabelColor
         launchAtLoginCaption.font = .systemFont(ofSize: 11)
         launchAtLoginCaption.textColor = .secondaryLabelColor
+        if !helper.canManageLaunchAtLogin {
+            launchAtLoginCaption.stringValue = "Move MagSleep.app to /Applications to use this"
+        }
 
         footnoteLabel.stringValue = "MagSleep installs a small helper to control the LED. "
             + "You'll be asked for your administrator password once."
@@ -209,6 +216,9 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.maximumNumberOfLines = 3
         statusLabel.preferredMaxLayoutWidth = 420
+        // Selectable so an install error's detail can be copied into a bug
+        // report.
+        statusLabel.isSelectable = true
         statusLabel.isHidden = true
 
         installButton.target = self
@@ -224,7 +234,35 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
 
         sleepCard.onSelect = { [weak self] in self?.selectMode(.sleep) }
         alwaysOffCard.onSelect = { [weak self] in self?.selectMode(.alwaysOff) }
+        wireCardNavigation()
         sleepCard.isSelected = true
+    }
+
+    /// Radio-group keyboard navigation: Left/Right arrows on one card select
+    /// and focus the other (a sighted keyboard user can move between them).
+    private func wireCardNavigation() {
+        sleepCard.onArrowMove = { [weak self] in
+            self?.selectCardFocusing(self?.alwaysOffCard)
+        }
+        alwaysOffCard.onArrowMove = { [weak self] in
+            self?.selectCardFocusing(self?.sleepCard)
+        }
+        // A window resigning key (e.g. an admin prompt) must not leave a stale
+        // focus border on a card.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.sleepCard.clearFocus()
+            self?.alwaysOffCard.clearFocus()
+        }
+    }
+
+    private func selectCardFocusing(_ card: ModeCardView?) {
+        guard let card else { return }
+        card.onSelect?()
+        window?.makeFirstResponder(card)
     }
 
     private func addSubviews(to content: NSView) {
@@ -306,6 +344,8 @@ final class ModeCardView: NSView {
         didSet { updateAppearance() }
     }
     var onSelect: (() -> Void)?
+    /// Called on Left/Right arrow keys (radio-group navigation).
+    var onArrowMove: (() -> Void)?
 
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
@@ -419,9 +459,17 @@ final class ModeCardView: NSView {
             onSelect?()
         case 49: // Space
             onSelect?()
+        case 123, 124: // Left / Right arrows — radio-group navigation
+            onArrowMove?()
         default:
             super.keyDown(with: event)
         }
+    }
+
+    /// Clears the focus border (used when the window resigns key).
+    func clearFocus() {
+        isFocused = false
+        updateAppearance()
     }
 
     private func updateAppearance() {

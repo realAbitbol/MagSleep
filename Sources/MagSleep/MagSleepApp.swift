@@ -13,6 +13,18 @@ enum MagSleepMain {
 
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
+        // A minimal main menu so Cmd+Q works even though this is a menu-bar
+        // app: the status menu's Quit keyEquivalent only fires while that menu
+        // is open, which would otherwise trap keyboard-only users (notably in
+        // the mandatory onboarding window).
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let quitItem = NSMenuItem(title: "Quit MagSleep", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+        app.mainMenu = mainMenu
         let delegate = AppDelegate()
         app.delegate = delegate
         app.run()

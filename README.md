@@ -22,9 +22,11 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 
 ## Features
 
-- **Sleep Mode** — turns the MagSafe LED off while the Mac sleeps, restores it to macOS on wake
+- **Sleep Mode** — turns the MagSafe LED off while the Mac sleeps, restores it to macOS on wake (also turns it off when just the *display* sleeps)
 - **Always Off** — keeps the LED off at all times (re-asserted even when you plug/unplug the charger)
 - **Disabled** — hands the LED back to macOS entirely, whenever you want
+- **Night Schedule** — keeps the LED off from sunset to sunrise (optional, sun times come from macOS)
+- **Notification Blink** — blinks the LED green when a notification arrives (optional; enabling it asks for **Accessibility access** once, which is how it reads the Notification Center — same mechanism as notifier apps like Bark)
 - **Launch at Login** — starts MagSleep automatically when you log in
 - **In-app updates** — checks for new versions automatically (twice a day) and installs them with Sparkle; no more manual DMG downloads
 - **VirusTotal-scanned** — every release DMG is uploaded to VirusTotal before publishing; the badge above links to the current scan result
@@ -195,25 +197,20 @@ make dmg VERSION=1.2.10    # dist/MagSleep-1.2.10.dmg
 | `make lint` | Run SwiftLint + Periphery dead-code scan (also runs in the git pre-commit hook) |
 | `make install-hooks` | Install the git pre-commit hook (SwiftLint, Periphery, tests, warnings-as-errors build); requires `swiftlint` and `periphery` (`brew install swiftlint periphery`) |
 | `make notarize` | Sign + notarize with a Developer ID cert if present (skips gracefully without one) |
-| `make release VERSION=x.y.z` | Full release: test, build DMG, update versions, commit, tag, push, publish GitHub Release + Sparkle appcast |
+| `make release VERSION=x.y.z` | **CI-only release driver**: validate changelog, bump version refs, commit, tag `vx.y.z`, push — CI builds + publishes (no local build) |
 | `make clean` | Remove `.build` and `dist` |
 
 The app version is written to the app's `Info.plist`; the **helper revision** (last commit touching helper-affecting code) is written to the helper version file on install. Launching an app whose helper revision differs from the installed helper's triggers an "Update Helper" prompt — so an unchanged helper is not reinstalled on a plain app update.
 
 ## Release process
 
-`make release VERSION=x.y.z` automates a full release (`scripts/release.sh`):
+**Releases are CI-only.** Every published DMG is built from scratch on a GitHub Actions runner — never on a maintainer's machine — so a published DMG is provably GitHub-built. To release:
 
-- Refuses a dirty tree or an existing tag
-- Runs tests, builds the DMG and the Sparkle update ZIP
-- Updates the README/Makefile version references
-- Uses the released version's `CHANGELOG.md` section as the GitHub release body
-  and as the Sparkle update notes (write the changelog before releasing)
-- Regenerates and signs `appcast/appcast.xml` (Sparkle EdDSA), committing it
-- Commits, creates tag `vX.Y.Z`, pushes branch + tag
-- Publishes the GitHub Release with the DMG + ZIP attached
+1. Write the released version's `## [x.y.z]` section in `CHANGELOG.md`.
+2. `make release VERSION=x.y.z` — validates the changelog section, bumps the README/Makefile version references, commits `Release vx.y.z`, creates the tag, and pushes branch + tag. That's all that happens locally.
+3. The `.github/workflows/release.yml` workflow (triggered by the tag push) runs tests, builds the DMG + Sparkle ZIP from scratch, VirusTotal-scans the DMG, signs `appcast/appcast.xml` with the Sparkle EdDSA key, **attests the DMG + ZIP** (Sigstore provenance — verify with `gh attestation verify MagSleep-x.y.z.dmg --owner realAbitbol`), publishes the GitHub Release, and commits the signed appcast.
 
-Requirements: a clean tree, a `gh`-authenticated session, and the Sparkle EdDSA signing key (from `generate_keys`) in the login keychain.
+The workflow needs two **repo secrets** (`gh secret set`): `VIRUSTOTAL_API_KEY` (VirusTotal scan) and `SPARKLE_EDDSA_KEY` (the 44-char base64 Sparkle EdDSA private key, from the login keychain under service `https://sparkle-project.org`).
 
 ## Notarization & distribution
 

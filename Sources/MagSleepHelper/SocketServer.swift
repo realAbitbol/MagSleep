@@ -50,15 +50,13 @@ final class SocketServer {
             return false
         }
 
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            let pathBytes = Array(path.utf8)
-            let count = min(pathBytes.count, raw.count - 1)
-            for i in 0..<count {
-                raw[i] = pathBytes[i]
-            }
-            raw[count] = 0
+        var addr: sockaddr_un
+        do {
+            addr = try UnixSocket.makeSockAddr(path)
+        } catch {
+            log.error("socket path too long")
+            close(fd)
+            return false
         }
 
         // Remove a stale socket file left by a previous run.
@@ -193,7 +191,7 @@ final class SocketServer {
         let n = read(fd, &buffer, buffer.count)
         if n > 0 {
             client.buffer.append(contentsOf: buffer[0..<n])
-            if client.buffer.count > SocketResponse.maxMessageBytes {
+            if client.buffer.count > MagSleep.maxMessageBytes {
                 log.error("request too large; closing connection")
                 closeClient(fd)
                 return
@@ -227,24 +225,8 @@ final class SocketServer {
     }
 
     private func writeAll(_ fd: Int32, _ data: Data) {
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            var sent = 0
-            while sent < data.count {
-                let n = write(fd, base.advanced(by: sent), data.count - sent)
-                if n > 0 {
-                    sent += n
-                } else if n < 0 && errno == EINTR {
-                    continue
-                } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-                    if poll(&pfd, 1, 500) <= 0 {
-                        return // give up; the connection is closed right after
-                    }
-                } else {
-                    return
-                }
-            }
-        }
+        // Best-effort (the connection is closed right after); the client side
+        // of the protocol surfaces write errors instead.
+        _ = try? UnixSocket.writeAll(fd, data, pollTimeoutMs: 500)
     }
 }

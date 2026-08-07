@@ -43,14 +43,22 @@ fi
 # out and immediately bootstrapping races with launchd's unload and commonly
 # fails with EIO. `launchctl print` exits non-zero only once the job is fully
 # gone from the domain.
+# Wait until launchd has actually released the job: `launchctl print` exits
+# non-zero only once the job is fully gone from the domain. Called before the
+# first bootstrap AND between retries (a bootout→bootstrap race is a classic
+# "Bootstrap failed: 5: Input/output error").
+wait_for_job_gone() {
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+    done
+}
+
 launchctl bootout "system/$LABEL" 2>/dev/null || true
 launchctl enable "system/$LABEL" 2>/dev/null || true
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
-        break
-    fi
-    sleep 0.5
-done
+wait_for_job_gone
 
 install -m 755 -o root -g wheel "$RESOURCES/magsleep-helper" "$BIN"
 install -m 644 -o root -g wheel "$RESOURCES/$LABEL.plist" "$PLIST"
@@ -81,12 +89,12 @@ codesign -v "$BIN" || { echo "installed helper binary failed signature validatio
 # previous revision on disk and the app re-prompts the update on the next
 # launch. launchctl's real stderr + exit code are surfaced so a failure is
 # diagnosable instead of a generic "bootstrap attempt failed".
-BOOTSTRAP_ERR_FILE="$(mktemp /tmp/magsleep-bootstrap.XXXXXX)"
+BOOTSTRAP_ERR_FILE="$(mktemp "${TMPDIR:-/tmp}/magsleep-bootstrap.XXXXXX")"
+trap 'rm -f "$BOOTSTRAP_ERR_FILE"' EXIT
 for attempt in 1 2 3; do
     BOOTSTRAP_RC=0
     launchctl bootstrap system "$PLIST" 2>"$BOOTSTRAP_ERR_FILE" || BOOTSTRAP_RC=$?
     if [ "$BOOTSTRAP_RC" -eq 0 ]; then
-        rm -f "$BOOTSTRAP_ERR_FILE"
         echo "$HELPER_REVISION" > "$CONFIG_DIR/helper-version.txt"
         chown root:wheel "$CONFIG_DIR/helper-version.txt"
         chmod 644 "$CONFIG_DIR/helper-version.txt"
@@ -94,9 +102,9 @@ for attempt in 1 2 3; do
         exit 0
     fi
     echo "bootstrap attempt $attempt failed (exit $BOOTSTRAP_RC): $(cat "$BOOTSTRAP_ERR_FILE")" >&2
-    rm -f "$BOOTSTRAP_ERR_FILE"
     sleep 2
     launchctl bootout "system/$LABEL" 2>/dev/null || true
+    wait_for_job_gone
 done
 
 echo "MagSleep helper bootstrap failed" >&2

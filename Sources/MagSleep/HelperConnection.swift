@@ -59,7 +59,7 @@ enum HelperConnection {
                     responseData = responseData[..<newline]
                     break
                 }
-                if responseData.count > SocketResponse.maxMessageBytes * 2 {
+                if responseData.count > MagSleep.maxMessageBytes * 2 {
                     throw ConnectionError.decodeFailed
                 }
             } else if n == 0 {
@@ -93,15 +93,12 @@ enum HelperConnection {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw ConnectionError.socketFailed }
 
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            let pathBytes = Array(MagSleep.socketPath.utf8)
-            let count = min(pathBytes.count, raw.count - 1)
-            for i in 0..<count {
-                raw[i] = pathBytes[i]
-            }
-            raw[count] = 0
+        var addr: sockaddr_un
+        do {
+            addr = try UnixSocket.makeSockAddr(MagSleep.socketPath)
+        } catch {
+            close(fd)
+            throw ConnectionError.connectFailed
         }
 
         // Non-blocking connect with a short deadline so the probe never hangs.
@@ -130,24 +127,10 @@ enum HelperConnection {
     }
 
     private static func writeAll(_ fd: Int32, _ data: Data) throws {
-        try data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            var sent = 0
-            while sent < data.count {
-                let n = write(fd, base.advanced(by: sent), data.count - sent)
-                if n > 0 {
-                    sent += n
-                } else if n < 0 && errno == EINTR {
-                    continue
-                } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-                    if poll(&pfd, 1, 1000) <= 0 {
-                        throw ConnectionError.writeFailed
-                    }
-                } else {
-                    throw ConnectionError.writeFailed
-                }
-            }
+        do {
+            try UnixSocket.writeAll(fd, data)
+        } catch {
+            throw ConnectionError.writeFailed
         }
     }
 }

@@ -43,11 +43,40 @@ chmod +x "$APP/Contents/Resources/"*.sh "$APP/Contents/Resources/magsleep-helper
 # against this to decide whether to reinstall — so the unchanged helper is
 # never reinstalled on a plain app update. "unknown" (no git, e.g. a tarball
 # build) keeps the legacy always-reinstall behavior.
-HELPER_REV="$(git log -1 --format=%h -- Sources/MagSleepHelper Sources/MagSleepCore packaging scripts/install-helper.sh 2>/dev/null || true)"
+HELPER_REV="$(git log -1 --format=%h -- \
+    Sources/MagSleepHelper Sources/MagSleepCore \
+    packaging/com.magsleep.helper.plist scripts/install-helper.sh 2>/dev/null || true)"
 if [ -z "$HELPER_REV" ]; then
     HELPER_REV="unknown"
 fi
 printf '%s' "$HELPER_REV" > "$APP/Contents/Resources/helper-revision.txt"
+
+# Build provenance: who built this app. In CI this records the GitHub Actions
+# run URL + commit, so a published DMG can be traced back to the exact workflow
+# run that produced it (the "built by GitHub, not locally" proof). Written
+# before codesign so the Resources seal covers it. A local build is labeled
+# "local" — deliberately distinct from a CI build.
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    BUILDER="github-actions"
+    RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
+    BUILD_SHA="${GITHUB_SHA:-unknown}"
+    BUILD_REF="${GITHUB_REF_NAME:-}"
+else
+    BUILDER="local"
+    RUN_URL=""
+    BUILD_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    BUILD_REF=""
+fi
+cat > "$APP/Contents/Resources/build-info.json" <<JSON
+{
+  "version": "$VERSION",
+  "buildNumber": "$BUILD_NUMBER",
+  "builtBy": "$BUILDER",
+  "commit": "$BUILD_SHA",
+  "ref": "$BUILD_REF",
+  "workflowRunURL": "$RUN_URL"
+}
+JSON
 
 sed -e "s/MAGSLEEP_VERSION/$VERSION/" -e "s/MAGSLEEP_BUILD/$BUILD_NUMBER/" \
     packaging/Info.plist > "$APP/Contents/Info.plist"

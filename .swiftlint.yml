@@ -51,7 +51,7 @@ line_length:
 # Structural limits tuned for this compact codebase (menu-bar controller
 # naturally holds menu + state + prompt logic in one file).
 file_length:
-  warning: 700
+  warning: 800
   error: 1200
 type_body_length:
   warning: 700
