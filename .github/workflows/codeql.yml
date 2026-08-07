@@ -1,0 +1,38 @@
+# Scheduled CodeQL analysis — replaces GitHub's default setup, which ran a
+# full scan (Swift is ~20 min) on EVERY push and clustered 3× during releases
+# (master + tag + CI commits), thrashing the Swift build into multi-hour stalls.
+#
+# This runs weekly (+ manual dispatch). The Swift analysis is the expensive one;
+# the Actions/Python jobs are seconds. Default setup was disabled in favor of
+# this so scans happen once a week, not on every push.
+
+name: "CodeQL"
+
+on:
+  schedule:
+    # Weekly: Mondays 03:00 UTC.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  security-events: write # upload the SARIF analysis results
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['actions', 'python', 'swift']
+    steps:
+      - uses: actions/checkout@v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
