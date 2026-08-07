@@ -8,7 +8,11 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
-## [Unreleased]
+## [1.3.1] - 2026-08-07
+
+### Added
+
+- SF Symbol icons on the "Launch at Login" and "Quit MagSleep" menu items
 
 ### Removed
 

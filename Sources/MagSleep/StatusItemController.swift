@@ -344,7 +344,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         self.menu = menu
     }
 
-    /// The settings toggles (night schedule + notification blink), kept in
+    /// The settings toggles (night schedule), kept in
     /// their own builder so `createMenu` stays compact.
     private func addSettingsToggles(to menu: NSMenu) {
         nightScheduleItem.title = "Night Schedule"
