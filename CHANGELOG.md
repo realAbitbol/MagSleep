@@ -8,6 +8,22 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.2] - 2026-08-07
+
+### Fixed
+
+- **Subprocess hang**: the helper and the app could hang forever when a subprocess left a background child holding its output pipe (e.g. `corebrightnessdiag` or the privileged install script) — subprocess runs now always return at their deadline, truncated if necessary
+- **Night schedule sunrise**: with the night schedule enabled, the LED stayed off for up to 30 minutes after sunrise; it now returns to macOS control within seconds
+
+### Changed
+
+- **Install hardening**: MagSleep now refuses to install the helper unless the app bundle passes signature validation and the bundled helper binary matches the cdhash recorded at build time — a modified or corrupted app can no longer install a tampered root daemon
+- **Release safety**: the release pipeline now fails if the Sparkle update-signing key does not match the public key embedded in the app, instead of shipping an update every client would reject
+
+### Internal
+
+- About-dialog text view extracted from the menu controller; the menu's install-state notification now fires on both install start and finish; the VirusTotal badge update in the release proof is idempotent
+
 ## [1.3.1] - 2026-08-07
 
 ### Added

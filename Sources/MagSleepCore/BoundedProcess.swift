@@ -77,11 +77,39 @@ public enum BoundedProcess {
         )
     }
 
+    /// Drains a pipe until EOF or the deadline, whichever comes first. Uses
+    /// poll-bounded reads instead of `availableData` (or `readDataToEndOfFile`):
+    /// those block until data OR EOF, and a grandchild of the child process
+    /// that inherited the pipe's write end keeps it open forever — the drain
+    /// would then block past the deadline indefinitely. Polling in ≤250ms
+    /// slices and re-checking the deadline between reads bounds the total wait
+    /// regardless of what holds the other end; output produced after the
+    /// deadline is dropped (the caller treats the run as truncated).
     private static func drain(_ pipe: Pipe, into data: inout Data, until deadline: Date) {
+        let handle = pipe.fileHandleForReading
+        let fd = handle.fileDescriptor
+        var buffer = [UInt8](repeating: 0, count: 4096)
         while Date() < deadline {
-            let chunk = pipe.fileHandleForReading.availableData
-            if chunk.isEmpty { break }
-            data.append(chunk)
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { break }
+            var pollFD = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let status = poll(&pollFD, 1, Int32(min(remaining, 0.25) * 1000))
+            if status < 0 {
+                if errno == EINTR { continue }
+                break
+            }
+            if status == 0 { continue } // nothing yet; loop re-checks the deadline
+            guard pollFD.revents & Int16(POLLIN) != 0 else { break } // POLLHUP/POLLERR, no data
+            let count = read(fd, &buffer, buffer.count)
+            if count > 0 {
+                data.append(contentsOf: buffer[0..<count])
+            } else if count == 0 {
+                break // EOF
+            } else if errno == EAGAIN {
+                continue
+            } else if errno != EINTR {
+                break
+            }
         }
     }
 }

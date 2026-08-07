@@ -30,7 +30,17 @@ def main() -> int:
                 f"(https://img.shields.io/badge/VirusTotal-{badge}-4c1?logo=virustotal)"
                 f"]({permalink})"
             )
-            open(path, "w").write(s[: i + len(start)] + "\n" + line + "\n" + s[j:])
+            # Idempotent AND self-healing: an identical badge line is left in
+            # place, and any different pre-existing badge line is replaced —
+            # a re-run may carry a new permalink (a rebuilt DMG has a fresh
+            # sha256), so badges must not stack between the markers.
+            lines = s[i + len(start):j].splitlines()
+            if line in [ln for ln in lines if ln.startswith("[![VirusTotal]")]:
+                print("README badge already present — skipping", file=sys.stderr)
+            else:
+                kept = [ln for ln in lines if not ln.startswith("[![VirusTotal]")]
+                inner = "\n".join(kept + [line]).strip("\n")
+                open(path, "w").write(s[: i + len(start)] + "\n" + inner + "\n" + s[j:])
         else:
             print("warning: VT_BADGE markers not found in README", file=sys.stderr)
 

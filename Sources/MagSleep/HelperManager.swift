@@ -21,7 +21,10 @@ final class HelperManager {
     /// keep the menu-bar icon on the hourglass.
     private(set) var isInstalling = false {
         didSet {
-            guard isInstalling != oldValue, isInstalling else { return }
+            // Post on BOTH transitions so the menu icon updates immediately
+            // when an install starts (hourglass) and again when it finishes
+            // (back to the live state), not only on the start.
+            guard isInstalling != oldValue else { return }
             NotificationCenter.default.post(name: Self.stateDidChangeNotification, object: nil)
         }
     }

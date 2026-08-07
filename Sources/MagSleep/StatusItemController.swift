@@ -515,12 +515,17 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         alert.messageText = "MagSleep \(appVersion)"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
+        alert.accessoryView = makeAboutAccessoryView(appVersion: appVersion, helperStatus: helperStatus)
+        alert.runModal()
+    }
 
-        // Body + clickable Ko-fi link as a non-editable text view. NSTextView
-        // renders the link underline below the descenders (a link-styled
-        // NSButton draws it at the baseline, where the "p" legs cut through it)
-        // and handles link clicks without the NSTextField field-editor bug that
-        // re-centered the text and dropped the link.
+    /// Builds the About dialog's body + clickable Ko-fi link as a non-editable
+    /// text view sized to its laid-out content.
+    private func makeAboutAccessoryView(appVersion: String, helperStatus: String) -> NSTextView {
+        // NSTextView renders the link underline below the descenders (a
+        // link-styled NSButton draws it at the baseline, where the "p" legs cut
+        // through it) and handles link clicks without the NSTextField
+        // field-editor bug that re-centered the text and dropped the link.
         let centered = NSMutableParagraphStyle()
         centered.alignment = .center
 
@@ -557,12 +562,11 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         textView.delegate = self
         textView.textStorage?.setAttributedString(body)
 
+        // Size the text view to its laid-out content so the alert matches.
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let height = ceil(textView.layoutManager?.usedRect(for: textView.textContainer!).height ?? 0)
         textView.frame = NSRect(x: 0, y: 0, width: 420, height: max(height, 1))
-
-        alert.accessoryView = textView
-        alert.runModal()
+        return textView
     }
 
     // MARK: - NSTextViewDelegate

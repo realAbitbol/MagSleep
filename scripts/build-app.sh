@@ -99,7 +99,19 @@ if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
     rm -rf "$ICON_TMP"
 fi
 
-codesign --force --sign - "$APP/Contents/Resources/magsleep-helper"
+# Sign the helper with an explicit identifier (com.magsleep.helper) so its
+# cdhash is preserved by the bundle-level --deep re-sign below — this is what
+# lets install-helper.sh verify the installed binary against the pin.
+codesign --force --sign - -i com.magsleep.helper "$APP/Contents/Resources/magsleep-helper"
+# Integrity pin for install-helper.sh (the helper will later run as root): the
+# cdhash of the signed helper exactly as shipped in the bundle. Written BEFORE
+# the bundle-level sign so it is sealed into Resources, and valid both before
+# and after the --deep re-sign (same identifier). install-helper.sh refuses to
+# install if either the bundle signature or this pin doesn't match the binary.
+HELPER_CDHASH="$(codesign -dvvv "$APP/Contents/Resources/magsleep-helper" 2>&1 | sed -n 's/^CDHash=//p')"
+if [ -n "$HELPER_CDHASH" ]; then
+    printf '%s' "$HELPER_CDHASH" > "$APP/Contents/Resources/helper-cdhash.txt"
+fi
 codesign --force --sign - --deep "$APP"
 
 if [ ! -x "$APP/Contents/MacOS/MagSleep" ]; then

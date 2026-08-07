@@ -96,6 +96,25 @@ final class BoundedProcessTests: XCTestCase {
         // The SIGTERM → SIGKILL escalation keeps the total wait bounded (~2s).
         XCTAssertLessThan(Date().timeIntervalSince(start), 5)
     }
+
+    func testGrandchildHoldingPipeDoesNotHang() {
+        // A background grandchild inherits the pipe's write end and keeps it
+        // open after the direct child exits, so EOF never arrives. The drain
+        // must still return at the deadline instead of blocking forever (the
+        // regression this test pins: `availableData` blocked past the deadline
+        // indefinitely, hanging BoundedProcess.run despite its timeout).
+        let start = Date()
+        let result = BoundedProcess.run(
+            executableURL: URL(fileURLWithPath: "/bin/bash"),
+            arguments: ["-c", "sleep 3 & echo done"],
+            timeout: 1.0
+        )
+        XCTAssertFalse(result.timedOut) // the direct child exited quickly
+        XCTAssertTrue(String(data: result.stdout, encoding: .utf8)?.contains("done") == true)
+        // Old code returned only after the grandchild's `sleep 3` released the
+        // pipe (~3s); the poll-bounded drain returns at the ~1s deadline.
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2.5)
+    }
 }
 
 final class UnixSocketTests: XCTestCase {

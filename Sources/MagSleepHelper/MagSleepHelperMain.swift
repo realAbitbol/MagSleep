@@ -70,6 +70,10 @@ final class PowerDaemon {
     private var sunScheduleTimer: Timer?
     /// Persistent SMC connection (opened lazily on first apply; retried on failure).
     private var smc: SMC.Connection?
+    /// Last color successfully written to the SMC. Drives the dedup in
+    /// `applyMode` (see below). Updated only on success, so a failed write is
+    /// retried on the next tick.
+    private var lastWrittenColor: MagSafeLED.Color?
     /// Throttles repeated SMC failure logs to one per distinct message.
     private var lastSMCLog: String?
 
@@ -249,6 +253,18 @@ final class PowerDaemon {
             isDisplayAsleep: isDisplayAsleep,
             isNight: isNight()
         )
+        // Skip the write only when the LED is already under macOS control
+        // (target == .system) AND we already wrote that — re-writing `.system`
+        // every 3s is pure SMC churn (~28,800 writes/day), and nothing can flip
+        // the LED out from under macOS. An explicit `.off` target is ALWAYS
+        // re-asserted: macOS flips the wire value on plug/unplug (Always Off
+        // must win) and a failed write must be retried. The same rule is what
+        // lets the 3s re-assert timer converge the LED back to macOS control at
+        // sunrise within seconds instead of waiting up to 30 minutes for the
+        // next sun-schedule refresh.
+        if target == .system && lastWrittenColor == .system {
+            return
+        }
         setLED(target)
     }
 
@@ -276,6 +292,7 @@ final class PowerDaemon {
         guard let connection = smcConnection() else { return }
         do {
             try MagSafeLED.set(color, using: connection)
+            lastWrittenColor = color
         } catch {
             smc = nil
             logThrottled("failed to set LED: \(error)")
@@ -542,20 +559,13 @@ final class PowerDaemon {
     /// Periodic re-assert of the active mode. Skipped entirely while disabled:
     /// the LED belongs to macOS then, and the only SMC write needed is the
     /// one-shot `.system` transition done by `applyMode()` on the disable
-    /// request. This keeps SMC traffic at zero when MagSleep is off.
+    /// request. This keeps SMC traffic at zero when MagSleep is off. Which
+    /// states actually need the watchdog write lives in `applyMode()`'s dedup:
+    /// Always Off (macOS flips the LED on plug/unplug), the display or system
+    /// asleep in Sleep Mode, the active night schedule, and the sunrise
+    /// transition back to macOS control.
     private func reassertActiveMode() {
         guard config.enabled else { return }
-        // While awake in Sleep Mode the LED is already under macOS control
-        // (the target is .system); re-writing it every tick is pure SMC churn
-        // (~28,800 writes/day). Only these cases need the watchdog: Always
-        // Off (macOS flips the LED on plug/unplug), the display or system
-        // asleep in Sleep Mode, and the active night schedule.
-        if config.mode == .sleep
-            && !isSleeping
-            && !isDisplayAsleep
-            && !(config.nightScheduleEnabled && isNight()) {
-            return
-        }
         applyMode()
     }
 

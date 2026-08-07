@@ -1,6 +1,9 @@
 #!/bin/bash
 # Installs the MagSleep privileged helper. Runs as root, invoked by the app.
 # Usage: install-helper.sh <app-resources-dir> <console-user> [helper-revision]
+# Before touching anything it verifies the source is trustworthy (see the
+# "Integrity check" section): the enclosing app bundle must validate, and the
+# bundled helper binary's cdhash must match the pin build-app.sh embedded.
 set -euo pipefail
 
 RESOURCES="$1"
@@ -35,6 +38,32 @@ if [ -z "${MAGSLEEP_INSTALL_LOCKED:-}" ]; then
     exit "$rc"
 fi
 
+# Integrity check before any privileged write: the helper that will run as
+# root must be exactly the one the app shipped. Two independent checks:
+#   1. The enclosing app bundle must carry a valid signature. This seals
+#      every file we read from $RESOURCES — including helper-cdhash.txt and
+#      the .sh scripts — so a modified bundle fails here.
+#   2. The bundled helper binary's cdhash must match the pin build-app.sh
+#      embedded at build time (helper-cdhash.txt). A tampered binary (even
+#      one in a re-signed bundle) still fails this pin.
+# Both run before the bootout so a rejected bundle never disturbs the
+# currently installed (working) helper.
+BUNDLE="$(dirname "$(dirname "$RESOURCES")")"
+if ! codesign --verify --deep --strict "$BUNDLE" 2>/dev/null; then
+    echo "refusing to install: the MagSleep app bundle failed signature validation (tampered app?)" >&2
+    exit 1
+fi
+if [ -s "$RESOURCES/helper-cdhash.txt" ]; then
+    EXPECTED_CDHASH="$(cat "$RESOURCES/helper-cdhash.txt")"
+    SRC_CDHASH="$(codesign -dvvv "$RESOURCES/magsleep-helper" 2>&1 | sed -n 's/^CDHash=//p')"
+    if [ -z "$EXPECTED_CDHASH" ] || [ -z "$SRC_CDHASH" ] || [ "$SRC_CDHASH" != "$EXPECTED_CDHASH" ]; then
+        echo "refusing to install: bundled helper binary does not match the app's recorded cdhash (tampered bundle?)" >&2
+        exit 1
+    fi
+else
+    echo "warning: no helper-cdhash.txt in the bundle; skipping the cdhash check" >&2
+fi
+
 # Purge any pre-existing job state before installing. An old or half-loaded
 # job with the same label (a previous MagSleep version, or a leftover from a
 # failed earlier attempt) makes `launchctl bootstrap` fail with a cryptic
@@ -43,10 +72,6 @@ fi
 # out and immediately bootstrapping races with launchd's unload and commonly
 # fails with EIO. `launchctl print` exits non-zero only once the job is fully
 # gone from the domain.
-# Wait until launchd has actually released the job: `launchctl print` exits
-# non-zero only once the job is fully gone from the domain. Called before the
-# first bootstrap AND between retries (a bootout→bootstrap race is a classic
-# "Bootstrap failed: 5: Input/output error").
 wait_for_job_gone() {
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
@@ -79,9 +104,23 @@ xattr -dr com.apple.provenance "$BIN" "$PLIST" 2>/dev/null || true
 # Input/output error" for a daemon whose signature wasn't produced at its
 # final path (e.g. copied out of a downloaded/quarantined app bundle).
 # Re-signing ad-hoc here, as root, at the exact path launchd reads eliminates
-# that whole class of failure — this is the fix for the reported EIO.
-codesign --force --sign - "$BIN" || { echo "could not sign helper binary" >&2; exit 1; }
+# that whole class of failure — this is the fix for the reported EIO. The
+# explicit -i identifier must match the one build-app.sh used (ad-hoc signing
+# otherwise appends a requirement hash to the basename), or the re-signed
+# binary's cdhash would differ from the pin below and a legit install would
+# fail its own integrity check.
+codesign --force --sign - -i "$LABEL" "$BIN" || { echo "could not sign helper binary" >&2; exit 1; }
 codesign -v "$BIN" || { echo "installed helper binary failed signature validation" >&2; exit 1; }
+# The installed binary is re-signed with the same identifier the app shipped it
+# under (com.magsleep.helper, from the $BIN basename), so its cdhash must equal
+# the pin — catches a corrupted copy that happened to pass the source check.
+if [ -n "${EXPECTED_CDHASH:-}" ]; then
+    INSTALLED_CDHASH="$(codesign -dvvv "$BIN" 2>&1 | sed -n 's/^CDHash=//p')"
+    if [ "$INSTALLED_CDHASH" != "$EXPECTED_CDHASH" ]; then
+        echo "installed helper binary cdhash mismatch after re-sign" >&2
+        exit 1
+    fi
+fi
 
 # Bootstrap with retries. Each attempt re-bootouts first so a half-unloaded
 # previous job can never conflict with the new one. The revision file is

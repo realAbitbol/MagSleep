@@ -21,6 +21,18 @@ STAGE="${2:?}"
 TAG="v$VERSION"
 ASSET_URL="https://github.com/realAbitbol/MagSleep/releases/download/$TAG/MagSleep-$VERSION.zip"
 
+# The appcast is signed with the SPARKLE_EDDSA_KEY secret. If that key doesn't
+# derive the public key embedded in the app (packaging/Info.plist →
+# SUPublicEDKey), every Sparkle client would silently reject the signed update.
+# Fail before signing/publishing. Local flows without the env var skip this.
+if [ -n "${SPARKLE_EDDSA_KEY:-}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+    swift "$SCRIPT_DIR/verify-sparkle-key.swift" "$SCRIPT_DIR/../packaging/Info.plist" || {
+        echo "error: SPARKLE_EDDSA_KEY does not match the app's SUPublicEDKey" >&2
+        exit 1
+    }
+fi
+
 # Locate generate_appcast: the Sparkle SPM binary artifact, then PATH.
 GENERATE_APPCAST="${GENERATE_APPCAST:-}"
 if [ -z "$GENERATE_APPCAST" ] || [ ! -x "$GENERATE_APPCAST" ]; then
