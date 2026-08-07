@@ -111,13 +111,29 @@ final class NotificationBlink {
         if AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary) {
             return true
         }
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(
-            AXUIElementCreateSystemWide(),
-            kAXFocusedApplicationAttribute as CFString,
-            &value
-        )
-        return result == .success || result == .noValue
+        // Ad-hoc builds: the API can lie, so verify with a practical read.
+        // Only .apiDisabled (or a hard error that survives retries) means AX
+        // is genuinely disabled — .cannotComplete/.failure are transient
+        // (e.g. mid app-switch) and must not be treated as "not trusted",
+        // which would re-prompt a user who already granted access.
+        for _ in 0..<3 {
+            var value: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(
+                AXUIElementCreateSystemWide(),
+                kAXFocusedApplicationAttribute as CFString,
+                &value
+            )
+            switch result {
+            case .apiDisabled, .invalidUIElement, .attributeUnsupported:
+                return false
+            case .cannotComplete, .failure:
+                Thread.sleep(forTimeInterval: 0.05)
+                continue
+            default: // .success / .noValue — access works
+                return true
+            }
+        }
+        return false
     }
 
     private func openAccessibilitySettings() {
