@@ -3,6 +3,25 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.3.1</title>
+            <pubDate>Fri, 07 Aug 2026 11:34:31 +0000</pubDate>
+            <sparkle:version>202608071133</sparkle:version>
+            <sparkle:shortVersionString>1.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Added
+
+- SF Symbol icons on the "Launch at Login" and "Quit MagSleep" menu items
+
+### Removed
+
+- **Notification Blink** (the menu toggle that blinked the LED on incoming notifications, shipped in 1.3.0). It read the Notification Center through the **Accessibility API**, and macOS's TCC records Accessibility grants against the app's code-signing identity: for an ad-hoc-signed app that identity is the binary's cdhash, which changes on every build — so the grant would silently break for users on every Sparkle update. There is no way to make the grant survive updates without a trusted (paid Developer ID) signing identity, so the feature is removed rather than shipped broken. The fix is documented in the repo's git history and can be revived if the app ever moves to Developer ID signing
+
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.1/MagSleep-1.3.1.zip" length="2497432" type="application/octet-stream" sparkle:edSignature="eoKKSWmImHQvilpY7BKIqP47sDr2VBgykK5YU9lO0gZW0Rs8YsjYpbDbzIuIPWW1xGKmyd5R9rAp8uLFVYT0AA=="/>
+        </item>
+        <item>
             <title>1.3.0</title>
             <pubDate>Fri, 07 Aug 2026 05:48:07 +0000</pubDate>
             <sparkle:version>202608070545</sparkle:version>
@@ -40,22 +59,6 @@
 - VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/2936db5072fe25f975b2257a268bf854a920aad48ced402e71b931cbb1b95b6c/detection)
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.10/MagSleep-1.2.10.zip" length="2150597" type="application/octet-stream" sparkle:edSignature="/p29GP6W3z+8DyOO4asE7l/f/o8BJas6jA/RA+/FfmUYaFd+jXjxe53mwMP1DkfJoCM880KKhfX2AJImkWveCg=="/>
-        </item>
-        <item>
-            <title>1.2.9</title>
-            <pubDate>Thu, 06 Aug 2026 07:01:00 +0200</pubDate>
-            <sparkle:version>202608060700</sparkle:version>
-            <sparkle:shortVersionString>1.2.9</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Fixed
-
-- Helper install failing with "bootstrap attempt N failed; retrying" (reported by a fresh-install user): `install-helper.sh` now strips quarantine/provenance xattrs from the installed daemon binary, guarantees a valid ad-hoc signature (re-signing it if a copy path disturbed it), retries with a longer settle, and — most importantly — surfaces **launchctl's real error and exit code** so any future failure is diagnosable instead of a generic retry message
-- The Sleep Mode card in the onboarding window was cut off ("LED off while the Mac / sleeps, back on when you…"): the card subtitles now wrap up to 3 lines with the correct measurement width, and the cards are slightly taller
-- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/109eb3766c39ff2af85c0b77e93020e1cb8c3c64142ad5732df4707d62be3482/detection)
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.2.9/MagSleep-1.2.9.zip" length="2150404" type="application/octet-stream" sparkle:edSignature="5XFOOtKnndYYR8LuTEHFPxFKHVEjoolYUZ4EgCa2stcO1YkFmxXx9XGKItVNAFLLkm8DZfJk4xbptJJ7bEM2Dw=="/>
         </item>
     </channel>
 </rss>

@@ -17,6 +17,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Removed
 
 - **Notification Blink** (the menu toggle that blinked the LED on incoming notifications, shipped in 1.3.0). It read the Notification Center through the **Accessibility API**, and macOS's TCC records Accessibility grants against the app's code-signing identity: for an ad-hoc-signed app that identity is the binary's cdhash, which changes on every build — so the grant would silently break for users on every Sparkle update. There is no way to make the grant survive updates without a trusted (paid Developer ID) signing identity, so the feature is removed rather than shipped broken. The fix is documented in the repo's git history and can be revived if the app ever moves to Developer ID signing
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/8b0b47107c2d709721a9fa18d29bbf723d1a99442fef9a0464f224f8b41e0057/detection)
 
 ## [1.3.0] - 2026-08-07
 
