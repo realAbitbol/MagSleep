@@ -3,6 +3,22 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.3.3</title>
+            <pubDate>Fri, 07 Aug 2026 20:20:48 +0000</pubDate>
+            <sparkle:version>202608072017</sparkle:version>
+            <sparkle:shortVersionString>1.3.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **Helper update failed on 1.3.2** ("installed helper binary cdhash mismatch after re-sign"): the install-time integrity check compared the re-signed cdhash against the build-time pin, but re-signing recomputes the CodeDirectory with the local `codesign` — a CI-built binary re-signed locally yields a different cdhash for identical code, so a legitimate update was rejected after the old job was already unloaded (helper left not running). The final-path cdhash check is removed; the source-side checks (app bundle signature + bundled-helper cdhash pin) remain and are toolchain-independent
+- **Helper update prompts only when there is actually a new binary**: the app now compares a signing-independent content hash of the installed helper against the bundled one (with the git revision as fallback), instead of trusting the recorded revision — so a stale revision file can no longer trigger a bogus update prompt when the installed binary is already current
+
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.3/MagSleep-1.3.3.zip" length="2511674" type="application/octet-stream" sparkle:edSignature="RpFjuNDRKcQ7TXWcPLQHH/f/2fz2CDTjZMS0mdaeom/JbyPXntUp0IsxOdBAOtloNxadjp8vpxXbOre9boRQDA=="/>
+        </item>
+        <item>
             <title>1.3.2</title>
             <pubDate>Fri, 07 Aug 2026 19:59:47 +0000</pubDate>
             <sparkle:version>202608071958</sparkle:version>
@@ -45,30 +61,6 @@
 
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.1/MagSleep-1.3.1.zip" length="2497432" type="application/octet-stream" sparkle:edSignature="eoKKSWmImHQvilpY7BKIqP47sDr2VBgykK5YU9lO0gZW0Rs8YsjYpbDbzIuIPWW1xGKmyd5R9rAp8uLFVYT0AA=="/>
-        </item>
-        <item>
-            <title>1.3.0</title>
-            <pubDate>Fri, 07 Aug 2026 05:48:07 +0000</pubDate>
-            <sparkle:version>202608070545</sparkle:version>
-            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Added
-
-- **Night Schedule** (optional): a menu toggle that keeps the MagSafe LED off from **sunset to sunrise** — sun times come from macOS (`corebrightnessdiag`), with a 20:00–07:00 fallback when unavailable. Disabled mode always wins
-- **Display-sleep → LED off** (part of Sleep Mode): the LED now turns off when the *display* sleeps (not only at full system sleep) and returns to macOS control on screen wake — via IODisplayWrangler IOKit notifications, which work from the system daemon without a GUI session
-- **Notification Blink** (optional): a menu toggle that blinks the LED green 5 times when a new notification arrives. It reads the Notification Center through the **Accessibility API** (the same mechanism notifier apps like Bark use): enabling it asks for Accessibility access; if refused, the toggle stays off. A "Dump Notification Center Tree…" menu item saves the AX tree for tuning on specific Macs
-- **CI-built releases with provenance**: every release DMG is now built from scratch on GitHub Actions runners — never on a maintainer's machine — with the VirusTotal scan, Sparkle appcast signing, and a Sigstore **build attestation** all performed in CI. Anyone can verify a DMG was GitHub-built (`gh attestation verify MagSleep-x.y.z.dmg --owner realAbitbol`), and every app embeds a `build-info.json` recording who built it and from which commit/workflow run
-
-### Changed
-
-- `make release VERSION=x.y.z` now only does what GitHub needs: it validates the changelog, bumps the version references, commits, tags `vX.Y.Z`, and pushes — the GitHub Actions workflow then builds, scans, signs, attests, and publishes. Local publishing is disabled by design
-- Code-quality refactor: the bounded subprocess wait/drain, unix-socket I/O, and socket request dispatch are extracted into shared, unit-tested `MagSleepCore` helpers (`BoundedProcess`, `UnixSocket`, `SocketCommandHandler`), and the helper install flow is collapsed into a single path
-- Test suite grown to **99 tests** (socket dispatch, notification detection, subprocess bounds, sockaddr layout, plus the existing config/LED/protocol coverage); SwiftLint and the Periphery dead-code scan run in the git pre-commit hook
-
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.0/MagSleep-1.3.0.zip" length="2539378" type="application/octet-stream" sparkle:edSignature="DSfXpf8wBZWjJokpBgpS4Lp9RW9235C/po4D3xhOmjpiBsV0eqxTUWXPCfKynmzKMGjLMRSo7PqKr6oOLsCDAg=="/>
         </item>
     </channel>
 </rss>
