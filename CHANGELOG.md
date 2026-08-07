@@ -22,6 +22,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 - `make release VERSION=x.y.z` now only does what GitHub needs: it validates the changelog, bumps the version references, commits, tags `vX.Y.Z`, and pushes — the GitHub Actions workflow then builds, scans, signs, attests, and publishes. Local publishing is disabled by design
 - Code-quality refactor: the bounded subprocess wait/drain, unix-socket I/O, and socket request dispatch are extracted into shared, unit-tested `MagSleepCore` helpers (`BoundedProcess`, `UnixSocket`, `SocketCommandHandler`), and the helper install flow is collapsed into a single path
 - Test suite grown to **99 tests** (socket dispatch, notification detection, subprocess bounds, sockaddr layout, plus the existing config/LED/protocol coverage); SwiftLint and the Periphery dead-code scan run in the git pre-commit hook
+- VirusTotal scan of the DMG: [1 malicious / 75 engines](https://www.virustotal.com/gui/file/0b3b597c2b46bd958c03c510f793ea7700e3e511c7f6a7daad214148f184207a/detection)
 
 ## [1.2.10] - 2026-08-05
 
