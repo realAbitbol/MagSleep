@@ -197,6 +197,75 @@ final class NotificationNodeDetectorTests: XCTestCase {
         let keys = NotificationNodeDetector.notificationKeys(in: AccessibilityNode(role: "AXApplication", children: [stack]))
         XCTAssertEqual(keys, ["Mail Re: project see thread", "Messages Alice Dinner tonight?"])
     }
+
+    // MARK: - macOS version robustness (the AX tree shape differs across the
+    // app's supported range, macOS 14…26 — the detector must work on all of them)
+
+    /// macOS 13/14-era shape: banners inside an explicitly-marked stack,
+    /// chrome texts, and per-banner age timestamps ("5m ago") in the tree.
+    func testSonomaStyleTreeWithTimestamps() {
+        let banner = AccessibilityNode(role: "AXGroup", subrole: "AXNotificationCenterBanner", children: [
+            leaf("Mail"),
+            leaf("Re: launch"),
+            leaf("The build is green"),
+            leaf("5m ago"), // relative time must not pollute the key
+        ])
+        let stack = AccessibilityNode(role: "AXGroup", subrole: "AXNotificationCenterBannerStack", children: [
+            leaf("Notification Center"),
+            leaf("Clear All"),
+            leaf("Earlier Today"),
+            banner,
+        ])
+        let app = AccessibilityNode(role: "AXApplication", children: [
+            AccessibilityNode(role: "AXWindow", children: [stack]),
+        ])
+        let keys = NotificationNodeDetector.notificationKeys(in: app)
+        XCTAssertEqual(keys, ["Mail Re: launch The build is green"])
+    }
+
+    /// macOS 15/26-era shape: no banner subroles exposed (hosted in Control
+    /// Center), notifications are plain groups detected by the 2–6 text rule,
+    /// with a clock-text leaf.
+    func testTahoeStyleTreeWithoutSubroles() {
+        let notification = AccessibilityNode(role: "AXGroup", children: [
+            leaf("Slack"),
+            leaf("@ada"),
+            leaf("Standup in 5"),
+            leaf("12:30"),
+        ])
+        let scroll = AccessibilityNode(role: "AXScrollArea", children: [
+            leaf("Notification Center"),
+            leaf("Clear All"),
+            notification,
+        ])
+        let app = AccessibilityNode(role: "AXApplication", children: [scroll])
+        let keys = NotificationNodeDetector.notificationKeys(in: app)
+        XCTAssertEqual(keys, ["Slack @ada Standup in 5"])
+    }
+
+    /// The same message must produce the same key regardless of its age text —
+    /// a changing timestamp must never re-trigger a blink.
+    func testTimestampChangeDoesNotChangeKey() {
+        func key(withTimestamp timestamp: String) -> Set<String> {
+            let banner = AccessibilityNode(role: "AXGroup", subrole: "AXNotificationCenterBanner", children: [
+                leaf("Mail"), leaf("Re: project"), leaf("see thread"), leaf(timestamp),
+            ])
+            return NotificationNodeDetector.notificationKeys(
+                in: AccessibilityNode(role: "AXApplication", children: [banner])
+            )
+        }
+        XCTAssertEqual(key(withTimestamp: "5m ago"), key(withTimestamp: "now"))
+        XCTAssertEqual(key(withTimestamp: "2 hours ago"), key(withTimestamp: "12:30"))
+    }
+
+    /// A timestamp-only + chrome node is not a notification.
+    func testTimestampAloneIsNotANotification() {
+        let group = AccessibilityNode(role: "AXGroup", children: [
+            leaf("Close"), leaf("Options"), leaf("5m ago"),
+        ])
+        let keys = NotificationNodeDetector.notificationKeys(in: AccessibilityNode(role: "AXApplication", children: [group]))
+        XCTAssertTrue(keys.isEmpty)
+    }
 }
 
 final class BoundedProcessTests: XCTestCase {

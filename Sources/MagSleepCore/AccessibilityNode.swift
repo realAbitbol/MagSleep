@@ -77,6 +77,11 @@ public enum NotificationNodeDetector {
         let texts = leafTexts(in: node)
             .compactMap(clean)
             .filter { !ignoredTexts.contains($0) }
+            // Relative timestamps ("12:30", "5m ago", "2 hours ago") appear in
+            // the tree on some macOS versions and would both pollute keys and
+            // make a key change as the age text updates — dropping them keeps
+            // detection stable across macOS 14…26 tree shapes.
+            .filter { !looksLikeRelativeTime($0) }
         guard !texts.isEmpty else { return nil }
         if let subrole = node.subrole, bannerSubroles.contains(subrole) {
             return texts.joined(separator: " ")
@@ -99,5 +104,18 @@ public enum NotificationNodeDetector {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         return cleaned.isEmpty ? nil : cleaned
+    }
+
+    /// "12:30", "5m ago", "2 hours ago", "now" — age/clock text that some
+    /// macOS versions expose on notification nodes. Not part of the message.
+    private static func looksLikeRelativeTime(_ text: String) -> Bool {
+        let patterns = [
+            #"^\d{1,2}:\d{2}$"#,
+            #"^\d+\s?(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|s|sec|secs|second|seconds)\s?(ago)?$"#,
+            #"^now$"#,
+        ]
+        return patterns.contains { pattern in
+            text.range(of: pattern, options: .regularExpression) != nil
+        }
     }
 }

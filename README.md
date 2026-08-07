@@ -26,7 +26,7 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 - **Always Off** — keeps the LED off at all times (re-asserted even when you plug/unplug the charger)
 - **Disabled** — hands the LED back to macOS entirely, whenever you want
 - **Night Schedule** — keeps the LED off from sunset to sunrise (optional, sun times come from macOS)
-- **Notification Blink** — blinks the LED green when a notification arrives (optional; enabling it asks for **Accessibility access** once, which is how it reads the Notification Center — same mechanism as notifier apps like Bark)
+- **Notification Blink** — blinks the LED green when a notification arrives (optional; enabling it asks for **Accessibility access** once, which is how it reads the Notification Center — same mechanism as notifier apps like Bark). Works across macOS 14–26
 - **Launch at Login** — starts MagSleep automatically when you log in
 - **In-app updates** — checks for new versions automatically (twice a day) and installs them with Sparkle; no more manual DMG downloads
 - **VirusTotal-scanned** — every release DMG is uploaded to VirusTotal before publishing; the badge above links to the current scan result
