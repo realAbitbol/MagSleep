@@ -20,6 +20,10 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 
 </div>
 
+<div align="center">
+<img width="440" height="600" alt="Screenshot 2026-08-08 at 04-28-07" src="https://github.com/user-attachments/assets/80ac5236-0ac9-4282-aa96-4d36306b2c93" />
+</div>
+
 ## Features
 
 - **Sleep Mode** — turns the MagSafe LED off while the Mac sleeps, restores it to macOS on wake (also turns it off when just the *display* sleeps)
