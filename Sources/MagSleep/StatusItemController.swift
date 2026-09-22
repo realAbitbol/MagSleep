@@ -553,7 +553,14 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
                 + "or keeps it off completely in Always Off mode.\n\n"
                 + "Application version: \(appVersion)\nHelper up to date: \(helperStatus)\n\n"
                 + "Made with ♥️ by Abitbol\n\n",
-            attributes: [.paragraphStyle: centered]
+            attributes: [
+                // Explicit dynamic color: without it the text view falls back to
+                // black, which is unreadable on the alert's dark background in
+                // Dark Mode. `textColor` is white in Dark Mode, near-black in
+                // Light Mode, so it stays legible either way.
+                .foregroundColor: NSColor.textColor,
+                .paragraphStyle: centered,
+            ]
         ))
         body.append(NSAttributedString(
             string: "Support me on Kofi ☕",

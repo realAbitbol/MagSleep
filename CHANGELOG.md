@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.7] - 2026-09-22
+
+### Fixed
+
+- **About box text was unreadable in Dark Mode**: the dialog body had no explicit foreground color, so the text view fell back to black on the dark alert background. It now uses the dynamic system text color — white in Dark Mode, near-black in Light Mode
+
 ## [1.3.6] - 2026-09-22
 
 ### Changed
