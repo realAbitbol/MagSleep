@@ -140,6 +140,7 @@ final class MachOContentHashTests: XCTestCase {
     private func makeMachO(
         contentByte: UInt8,
         sigByte: UInt8,
+        vmsize: UInt64 = 0,
         filesize: UInt64,
         datasize: UInt32
     ) -> Data {
@@ -160,7 +161,7 @@ final class MachOContentHashTests: XCTestCase {
         d.append(Data("__LINKEDIT".utf8))
         d.append(Data(repeating: 0, count: 6)) // 16-byte padded segname
         d.append(u64(0)) // vmaddr
-        d.append(u64(0)) // vmsize
+        d.append(u64(vmsize)) // vmsize (variant field at +32)
         d.append(u64(0)) // fileoff
         d.append(u64(filesize)) // filesize (variant field at +48)
         d.append(u32(0)) // maxprot
@@ -182,16 +183,27 @@ final class MachOContentHashTests: XCTestCase {
     }
 
     func testHashIgnoresSignatureMetadata() {
-        // Different signature bytes, signature size, and the two load-command
-        // size fields must not change the hash (that is the re-sign case).
-        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, filesize: 32, datasize: 16)
-        let b = makeMachO(contentByte: 0x41, sigByte: 0x99, filesize: 64, datasize: 32)
+        // Different signature bytes, signature size, and the load-command size
+        // fields must not change the hash (that is the re-sign case).
+        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let b = makeMachO(contentByte: 0x41, sigByte: 0x99, vmsize: 64, filesize: 64, datasize: 32)
         XCTAssertEqual(MachOContentHash.hexSHA256(of: a), MachOContentHash.hexSHA256(of: b))
     }
 
+    func testHashIgnoresLinkEditVmsizePageSizeChange() {
+        // macOS 27's codesign signs with 16 KB pages while older toolchains used
+        // 4 KB pages. The signature size — and therefore the page-rounded
+        // __LINKEDIT.vmsize — differs, but the code is identical: the installed
+        // helper must hash equal to the bundled one (regression: vmsize was not
+        // neutralized, so the app prompted "update helper" forever).
+        let bundled = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 229_376, filesize: 217_408, datasize: 21_056)
+        let installed = makeMachO(contentByte: 0x41, sigByte: 0x02, vmsize: 212_992, filesize: 197_296, datasize: 944)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: bundled), MachOContentHash.hexSHA256(of: installed))
+    }
+
     func testHashDetectsContentChange() {
-        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, filesize: 32, datasize: 16)
-        let changed = makeMachO(contentByte: 0x42, sigByte: 0x01, filesize: 32, datasize: 16)
+        let a = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let changed = makeMachO(contentByte: 0x42, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
         XCTAssertNotEqual(MachOContentHash.hexSHA256(of: a), MachOContentHash.hexSHA256(of: changed))
     }
 

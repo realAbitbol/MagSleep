@@ -10,12 +10,20 @@ import Foundation
 /// rejected legitimate helper updates (CI-signed binary, re-signed locally).
 ///
 /// Instead this hashes the binary's actual content — everything up to the code
-/// signature — with the two load-command fields that re-signing legitimately
-/// rewrites neutralized (`__LINKEDIT`'s `filesize` and `LC_CODE_SIGNATURE`'s
-/// `datasize`, both of which just track the signature's size), and with the
-/// signature blob itself (everything from `dataoff` on) excluded. Two binaries
-/// built from the same code therefore hash equal regardless of who signed
-/// them; any real code change changes the hash.
+/// signature — with the load-command fields that re-signing legitimately
+/// rewrites neutralized (`__LINKEDIT`'s `vmsize` and `filesize`, and
+/// `LC_CODE_SIGNATURE`'s `datasize`, all of which just track the signature's
+/// size), and with the signature blob itself (everything from `dataoff` on)
+/// excluded. Two binaries built from the same code therefore hash equal
+/// regardless of who signed them; any real code change changes the hash.
+///
+/// `vmsize` matters because the signature size depends on the code-signing
+/// page size, which is *not* stable across macOS releases (macOS 27's
+/// `codesign` defaults to 16 KB pages, producing a ~900-byte signature, while
+/// earlier toolchains emitted 4 KB pages and a ~21 KB signature). The
+/// page-rounded `__LINKEDIT.vmsize` tracks `filesize`, so leaving it in the
+/// hash made an identical binary installed by the app mismatch the bundled one
+/// — a permanent false "helper update available" prompt.
 public enum MachOContentHash {
     /// Returns the hex SHA-256 of a Mach-O's content, or nil when the file
     /// can't be read or isn't a supported (thin arm64, or fat containing
@@ -30,6 +38,7 @@ public enum MachOContentHash {
         guard slice.count >= 32, uint32(slice, 0) == 0xfeedfacf else { return nil } // MH_MAGIC_64
         let ncmds = uint32(slice, 16)
         var offset = 32
+        var linkEditVmsize: Range<Int>?
         var linkEditFilesize: Range<Int>?
         var codeSignatureDatasize: Range<Int>?
         var dataOff: Int?
@@ -41,7 +50,9 @@ public enum MachOContentHash {
             switch cmd {
             case 0x19: // LC_SEGMENT_64
                 if segname(slice, at: offset + 8) == "__LINKEDIT" {
-                    // filesize (8 bytes) sits at +48 within the command.
+                    // vmsize (8 bytes) sits at +32 and filesize (8 bytes) at +48
+                    // within the command; both grow with the signature blob.
+                    linkEditVmsize = (offset + 32)..<(offset + 40)
                     linkEditFilesize = (offset + 48)..<(offset + 56)
                 }
             case 0x1d: // LC_CODE_SIGNATURE
@@ -59,13 +70,17 @@ public enum MachOContentHash {
         let end = dataOff ?? slice.count
         guard end > 0, end <= slice.count else { return nil }
         var bytes = [UInt8](slice[..<end])
-        if let range = linkEditFilesize, range.upperBound <= bytes.count {
-            for i in range { bytes[i] = 0 }
-        }
-        if let range = codeSignatureDatasize, range.upperBound <= bytes.count {
-            for i in range { bytes[i] = 0 }
-        }
+        zero([linkEditVmsize, linkEditFilesize, codeSignatureDatasize], in: &bytes)
         return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Zeroes the given byte ranges (the load-command fields that re-signing
+    /// legitimately rewrites) so they cannot affect the content hash.
+    private static func zero(_ ranges: [Range<Int>?], in bytes: inout [UInt8]) {
+        for range in ranges {
+            guard let range, range.upperBound <= bytes.count else { continue }
+            for i in range { bytes[i] = 0 }
+        }
     }
 
     /// Returns the thin arm64 slice of the file (the whole file when it is

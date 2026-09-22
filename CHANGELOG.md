@@ -8,6 +8,13 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.4] - 2026-09-22
+
+### Fixed
+
+- **"Helper needs updating" prompted forever after upgrading to macOS 27**: macOS 27's `codesign` signs with 16 KB code-signing pages while the bundled helper was built with 4 KB pages, so the embedded signature is a different size — and that changes `__LINKEDIT.vmsize`, which the signing-independent `MachOContentHash` was still comparing. The installed helper therefore never hashed equal to the bundled one and the app offered the helper update at every launch. `__LINKEDIT.vmsize` is now neutralized alongside `filesize` and `LC_CODE_SIGNATURE.datasize`, so only a real code change triggers an update
+- **Helper blocked at boot on macOS 27** (stale install): macOS 27's launchd no longer loads a LaunchDaemon plist carrying the `com.apple.quarantine` xattr, and AMFI/AppleSystemPolicy refuses quarantined/provenance-tagged ad-hoc daemons. A helper installed by a pre‑1.3.2 build kept those xattrs and was refused at the first macOS 27 boot, leaving the app unable to reach it. Installing 1.3.4 — whose `install-helper.sh` strips quarantine/provenance from the installed plist and binary — replaces it and restores the helper
+
 ## [1.3.3] - 2026-08-07
 
 ### Fixed
