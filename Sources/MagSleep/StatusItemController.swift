@@ -136,8 +136,13 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // probe can false-negative and trigger a spurious admin prompt + full
         // reinstall. Give the daemon a generous grace period first (see
         // confirmDaemonReachable).
+        // The daemon is expected to be starting, not broken: show the
+        // hourglass (via the waiting state) while we poll, and fall back to the
+        // warning triangle only when recovery actually gives up.
+        helper.setWaitingForDaemon(true)
         confirmDaemonReachable { [weak self] reachable in
             guard let self else { return }
+            self.helper.setWaitingForDaemon(false)
             if reachable {
                 self.updateMenuStates()
             } else {
@@ -232,7 +237,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
     /// Menu bar icon reflecting the current mode/state.
     private func statusImage() -> NSImage? {
         let symbolName: String
-        if helper.isInstalling {
+        if helper.isInstalling || helper.isWaitingForDaemon {
             symbolName = "hourglass"
         } else if !helper.isInstalled {
             symbolName = "exclamationmark.triangle"

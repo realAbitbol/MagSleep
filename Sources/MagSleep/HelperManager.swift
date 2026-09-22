@@ -28,6 +28,21 @@ final class HelperManager {
             NotificationCenter.default.post(name: Self.stateDidChangeNotification, object: nil)
         }
     }
+    /// True while the launch recovery is waiting for the daemon to become
+    /// reachable. The daemon can take 15–25 s to start around login, so this
+    /// shows the hourglass (a live "starting" state) instead of the warning
+    /// triangle, which is reserved for a helper that is really absent or down.
+    private(set) var isWaitingForDaemon = false {
+        didSet {
+            guard isWaitingForDaemon != oldValue else { return }
+            NotificationCenter.default.post(name: Self.stateDidChangeNotification, object: nil)
+        }
+    }
+    /// Marks the launch recovery as waiting for (or done waiting for) the
+    /// daemon. Driven by the controller's `checkDaemonRecovery`.
+    func setWaitingForDaemon(_ waiting: Bool) {
+        isWaitingForDaemon = waiting
+    }
     /// True while `confirmConnection` is polling the socket after an install.
     private(set) var isConfirmingConnection = false
     /// True after a post-install confirmation timed out (daemon unreachable).
@@ -111,6 +126,9 @@ final class HelperManager {
     var statusTitle: String {
         if isInstalling {
             return isConfirmingConnection ? "Connecting to helper…" : "Installing helper…"
+        }
+        if isWaitingForDaemon {
+            return "Waiting for helper…"
         }
         if !isInstalled {
             return "Helper not installed"

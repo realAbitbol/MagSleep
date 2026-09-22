@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.6] - 2026-09-22
+
+### Changed
+
+- **Menu-bar icon while the helper starts**: during the launch grace period the icon now shows the hourglass ("Waiting for helper…") instead of the warning triangle; the triangle is reserved for a helper that is genuinely absent or not running
+
 ## [1.3.5] - 2026-09-22
 
 ### Fixed
