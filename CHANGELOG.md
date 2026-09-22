@@ -13,6 +13,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Changed
 
 - **Menu-bar icon while the helper starts**: during the launch grace period the icon now shows the hourglass ("Waiting for helper…") instead of the warning triangle; the triangle is reserved for a helper that is genuinely absent or not running
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/22a45ac4eb5535a905ca82f669e0632c084dc924a994ee34bd0b234dde3716f0/detection)
 
 ## [1.3.5] - 2026-09-22
 
