@@ -3,6 +3,21 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.3.7</title>
+            <pubDate>Tue, 22 Sep 2026 18:56:49 +0000</pubDate>
+            <sparkle:version>202609221854</sparkle:version>
+            <sparkle:shortVersionString>1.3.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **About box text was unreadable in Dark Mode**: the dialog body had no explicit foreground color, so the text view fell back to black on the dark alert background. It now uses the dynamic system text color — white in Dark Mode, near-black in Light Mode
+
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.7/MagSleep-1.3.7.zip" length="2512692" type="application/octet-stream" sparkle:edSignature="C9Oj1VInJNEXvFS6GqgcnIc5WbbifRfsAiWbNLSNa3gfLGk3Dcx/ZLUQb+jQLoi81IPqjGPtkLLmwNaQS+FpCw=="/>
+        </item>
+        <item>
             <title>1.3.6</title>
             <pubDate>Tue, 22 Sep 2026 18:52:29 +0000</pubDate>
             <sparkle:version>202609221850</sparkle:version>
@@ -31,22 +46,6 @@
 
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.5/MagSleep-1.3.5.zip" length="2512497" type="application/octet-stream" sparkle:edSignature="pNI254WCIxVjmRJSSRCdddrvtB2vTS8MA4mha+Zw5GbPoHxErc2AFy8Bytm113bVlejPEWaisRM5UQm8r0/kDw=="/>
-        </item>
-        <item>
-            <title>1.3.4</title>
-            <pubDate>Tue, 22 Sep 2026 18:25:25 +0000</pubDate>
-            <sparkle:version>202609221822</sparkle:version>
-            <sparkle:shortVersionString>1.3.4</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Fixed
-
-- **"Helper needs updating" prompted forever after upgrading to macOS 27**: macOS 27's `codesign` signs with 16 KB code-signing pages while the bundled helper was built with 4 KB pages, so the embedded signature is a different size — and that changes `__LINKEDIT.vmsize`, which the signing-independent `MachOContentHash` was still comparing. The installed helper therefore never hashed equal to the bundled one and the app offered the helper update at every launch. `__LINKEDIT.vmsize` is now neutralized alongside `filesize` and `LC_CODE_SIGNATURE.datasize`, so only a real code change triggers an update
-- **Helper blocked at boot on macOS 27** (stale install): macOS 27's launchd no longer loads a LaunchDaemon plist carrying the `com.apple.quarantine` xattr, and AMFI/AppleSystemPolicy refuses quarantined/provenance-tagged ad-hoc daemons. A helper installed by a pre‑1.3.2 build kept those xattrs and was refused at the first macOS 27 boot, leaving the app unable to reach it. Installing 1.3.4 — whose `install-helper.sh` strips quarantine/provenance from the installed plist and binary — replaces it and restores the helper
-
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.4/MagSleep-1.3.4.zip" length="2511822" type="application/octet-stream" sparkle:edSignature="MuiBY4PPpKrK4lfme64jq1xxnXanEp/6hbZuglLG0M9I1KV7xHfbPLBgBgjTLYCtb4qpBy24xf6J7AB9HGAJBg=="/>
         </item>
     </channel>
 </rss>

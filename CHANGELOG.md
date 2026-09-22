@@ -13,6 +13,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 ### Fixed
 
 - **About box text was unreadable in Dark Mode**: the dialog body had no explicit foreground color, so the text view fell back to black on the dark alert background. It now uses the dynamic system text color — white in Dark Mode, near-black in Light Mode
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/27d2ced231af6ac97e73cbd5c9b13cbfb81f271f4565f9c09904f1ed95da25cd/detection)
 
 ## [1.3.6] - 2026-09-22
 
