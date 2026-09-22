@@ -8,6 +8,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [1.3.5] - 2026-09-22
+
+### Fixed
+
+- **Admin prompt on every reboot**: around login macOS starts the helper at roughly the same time as the app, and on macOS 27 the daemon took 15–25 s to become reachable — its process cold-starts slowly and `IORegisterForSystemPower` blocked for ~8 s *before* the request socket was bound. The app's launch recovery waited only ~4.5 s, then "repaired" the daemon by running the privileged install script — an admin prompt at every boot. The daemon now binds its socket before the IOKit power registrations, and the app waits up to 45 s for the daemon to come up before deciding it needs repair
+
 ## [1.3.4] - 2026-09-22
 
 ### Fixed

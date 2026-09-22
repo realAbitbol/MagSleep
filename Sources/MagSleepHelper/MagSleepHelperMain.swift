@@ -94,11 +94,16 @@ final class PowerDaemon {
         // accurate afterwards.
         isSleeping = isSystemSleeping()
 
-        // Set up signal handlers, system power notifications, and the request
-        // socket (app → daemon IPC, one connection per request).
+        // Set up signal handlers, the request socket, and system power
+        // notifications. The socket is bound FIRST, before the IOKit power
+        // registrations: `IORegisterForSystemPower` can block for several
+        // seconds at boot, and until the socket is listening the app's
+        // launch-time liveness probe false-negatives and triggers a spurious
+        // privileged reinstall. Binding here makes the daemon reachable within
+        // milliseconds of `run()` starting.
         setupSignalHandlers()
-        registerForPowerNotifications()
         startSocketServer()
+        registerForPowerNotifications()
         registerForPowerSourceChanges()
         registerForDisplaySleepNotifications()
         startSunScheduleTimer()

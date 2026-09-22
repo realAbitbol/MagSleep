@@ -134,7 +134,8 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         // helper.isLoaded was last probed at launch (HelperManager.init), but
         // the daemon's RunAtLoad bootstrap may still be in flight — a single
         // probe can false-negative and trigger a spurious admin prompt + full
-        // reinstall. Give the daemon a short grace period first.
+        // reinstall. Give the daemon a generous grace period first (see
+        // confirmDaemonReachable).
         confirmDaemonReachable { [weak self] reachable in
             guard let self else { return }
             if reachable {
@@ -147,16 +148,28 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         }
     }
 
-    /// Re-probes the daemon a few times over a few seconds. Returns true as
-    /// soon as the socket answers; false if it never comes up in time.
-    private func confirmDaemonReachable(triesLeft: Int = 3, completion: @escaping (Bool) -> Void) {
+    /// Re-probes the daemon until it answers or the grace window elapses.
+    /// Returns true as soon as the socket answers; false if it never comes up
+    /// in time.
+    ///
+    /// The window is deliberately generous. Around login launchd starts the
+    /// daemon at roughly the same time as the app, and the daemon's cold
+    /// process start plus its (blocking) IOKit power registration can take
+    /// 15–25 s before the socket is listening. A spurious "not running" verdict
+    /// here is expensive: it fires a real admin prompt and a full privileged
+    /// reinstall, which is exactly the bug this guards against.
+    private static let daemonStartGrace: TimeInterval = 45
+    private func confirmDaemonReachable(
+        deadline: Date = Date().addingTimeInterval(StatusItemController.daemonStartGrace),
+        completion: @escaping (Bool) -> Void
+    ) {
         helper.refreshAsync { [weak self] in
             guard let self else { return }
             if self.helper.isLoaded {
                 completion(true)
-            } else if triesLeft > 0 {
+            } else if Date() < deadline {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                    self?.confirmDaemonReachable(triesLeft: triesLeft - 1, completion: completion)
+                    self?.confirmDaemonReachable(deadline: deadline, completion: completion)
                 }
             } else {
                 completion(false)
