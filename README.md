@@ -15,7 +15,7 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 ![License](https://img.shields.io/badge/personal%20use-welcome-lightgrey)
 
 <!-- VT_BADGE -->
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%20malicious%2F75-4c1?logo=virustotal)](https://www.virustotal.com/gui/file/486edc30f17aa73f8257e7fdb5867070212f98a24750ef473a991f72022cc565/detection)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%20malicious%2F75-4c1?logo=virustotal)](https://www.virustotal.com/gui/file/1f9630426d46ecdfcdd6c9a2b4445bd778372fce2f197225551bce55a0193b96/detection)
 <!-- /VT_BADGE -->
 
 </div>
