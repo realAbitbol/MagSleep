@@ -93,17 +93,31 @@ public enum MachOContentHash {
         }
         if magic == 0xcafebabe || magic == 0xcafebabf { // FAT_MAGIC / FAT_MAGIC_64
             guard data.count >= 8 else { return nil }
+            let is64 = magic == 0xcafebabf
             let nfat = uint32(data, 4)
-            let entryWidth = magic == 0xcafebabf ? 20 : 16
+            // A fat_arch entry is 20 bytes (32-bit offset at +8, size at +12);
+            // a fat_arch_64 entry is 32 bytes (64-bit offset at +8, size at
+            // +16). Getting either width wrong walks off the entry and finds no
+            // arm64 slice at all — which is exactly what a standard universal
+            // binary (x86_64 first, arm64 second) hits.
+            let entryWidth = is64 ? 32 : 20
             var entryOffset = 8
             for _ in 0..<nfat {
                 guard entryOffset + entryWidth <= data.count else { return nil }
                 let cputype = uint32(data, entryOffset)
-                let offset = Int(uint32(data, entryOffset + 8))
-                let size = Int(uint32(data, entryOffset + 12))
+                let offset = is64
+                    ? uint64(data, entryOffset + 8)
+                    : UInt64(uint32(data, entryOffset + 8))
+                let size = is64
+                    ? uint64(data, entryOffset + 16)
+                    : UInt64(uint32(data, entryOffset + 12))
                 if cputype == 0x0100_000c { // CPU_TYPE_ARM64
-                    guard offset + size <= data.count else { return nil }
-                    return data.subdata(in: offset..<(offset + size))
+                    // Overflow-free bounds check: compare against the remaining
+                    // length rather than forming offset + size.
+                    guard size <= UInt64(data.count),
+                          offset <= UInt64(data.count) - size else { return nil }
+                    let start = Int(offset)
+                    return data.subdata(in: start..<(start + Int(size)))
                 }
                 entryOffset += entryWidth
             }
@@ -120,6 +134,13 @@ public enum MachOContentHash {
         guard offset + 4 <= data.count else { return 0 }
         return data.withUnsafeBytes { raw in
             raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+        }
+    }
+
+    private static func uint64(_ data: Data, _ offset: Int) -> UInt64 {
+        guard offset + 8 <= data.count else { return 0 }
+        return data.withUnsafeBytes { raw in
+            raw.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
         }
     }
 }

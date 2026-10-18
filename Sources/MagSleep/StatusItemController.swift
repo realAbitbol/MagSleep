@@ -102,7 +102,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         }
         onboardingController = controller
         controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 
     /// Returns whether the user opted into updating the helper in this step.
@@ -243,6 +243,10 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
             symbolName = "exclamationmark.triangle"
         } else if !helper.isLoaded {
             symbolName = "exclamationmark.triangle"
+        } else if helper.needsUpgrade {
+            // The helper changed and must be reinstalled before the app is
+            // fully functional; say so until the user acts on it.
+            symbolName = "arrow.down.circle"
         } else if !helper.isEnabled {
             symbolName = "circle.slash"
         } else {
@@ -370,6 +374,9 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
         nightScheduleItem.image = NSImage(systemSymbolName: "moon.stars", accessibilityDescription: nil)
         nightScheduleItem.target = self
         nightScheduleItem.action = #selector(toggleNightSchedule)
+        // Only meaningful while the daemon is running and enabled: the schedule
+        // is enforced by the daemon, so the toggle cannot work without it.
+        nightScheduleItem.isEnabled = helper.isLoaded && helper.isEnabled
         nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
         menu.addItem(nightScheduleItem)
     }
@@ -633,6 +640,7 @@ final class StatusItemController: NSObject, NSTextViewDelegate {
 
         // Night schedule toggle.
         nightScheduleItem.state = helper.nightScheduleEnabled ? .on : .off
+        nightScheduleItem.isEnabled = helper.isLoaded && helper.isEnabled
     }
 
     private func refreshHelperState() {

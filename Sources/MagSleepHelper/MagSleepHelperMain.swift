@@ -235,15 +235,21 @@ final class PowerDaemon {
 
     /// Accepts requests from root and from the current console user only.
     /// Fails closed: an undeterminable console user rejects the request rather
-    /// than authorizing an arbitrary local process on the 0666 socket.
+    /// than authorizing an arbitrary local process on the 0666 socket. The
+    /// decision itself lives in `PeerAuthorization` (unit-tested); this only
+    /// supplies the live console uid.
     private func isAllowedPeer(_ peerUID: uid_t) -> Bool {
-        if peerUID == 0 { return true }
+        PeerAuthorization.isAllowed(peerUID: peerUID, consoleUID: currentConsoleUserUID())
+    }
+
+    /// The current console user's uid, or nil when it cannot be determined.
+    private func currentConsoleUserUID() -> uid_t? {
         var consoleUID: uid_t = 0
         var consoleGID: gid_t = 0
         // Imports as CFString? (Swift-managed, +0) on this SDK — no manual
         // release needed.
-        guard SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) != nil else { return false }
-        return peerUID == consoleUID
+        guard SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) != nil else { return nil }
+        return consoleUID
     }
 
     // MARK: - Mode Application
@@ -571,6 +577,14 @@ final class PowerDaemon {
     /// transition back to macOS control.
     private func reassertActiveMode() {
         guard config.enabled else { return }
+        // Heal a dropped systemHasPoweredOn: the dynamic store is authoritative,
+        // so a missed wake message cannot pin the LED off forever (the watchdog
+        // would otherwise faithfully re-assert the stale asleep state).
+        if isSleeping, currentSystemPowerState() == false {
+            log.info("re-assert: power state reports awake; clearing stale sleep flag")
+            isSleeping = false
+            isDisplayAsleep = false
+        }
         applyMode()
     }
 
@@ -608,7 +622,7 @@ final class PowerDaemon {
     }
 }
 
-/// Entry point. Using `@main` (instead of top-level code) lets Periphery
+/// Entry point. Using `@main` (instead of top-level code) lets Lethen
 /// trace the real entry point, so the daemon's members are not reported as
 /// dead code.
 @main

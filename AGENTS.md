@@ -29,7 +29,7 @@ All commands are Makefile targets:
 | `make install` | Copy app to `/Applications` |
 | `make dmg VERSION=X.Y.Z` | Create distributable DMG |
 | `make test` | Run `swift test` (MagSleepCoreTests) |
-| `make lint` | Run SwiftLint + the Periphery dead-code scan (also runs in the git pre-commit hook) |
+| `make lint` | Run SwiftLint + the Lethen dead-code scan (also runs in the git pre-commit hook) |
 | `make release VERSION=X.Y.Z` | **CI-only release driver**: validate CHANGELOG section, bump README/Makefile version refs, commit, tag `vX.Y.Z`, push — CI builds + publishes (no local build) |
 | `make clean` | Remove `.build` and `dist` |
 
@@ -70,7 +70,7 @@ magsleep-helper (root LaunchDaemon)
 - `Sources/MagSleepCore/Constants.swift` — paths, labels, `OperationMode`, `DaemonConfig`
 - `Sources/MagSleepCore/DaemonState.swift` — pure state transitions (`DaemonConfig.apply`, `DaemonConfig.load`, `LEDTarget`)
 - `Sources/MagSleepCore/SocketProtocol.swift` — `SocketRequest`/`SocketResponse` (newline-delimited JSON)
-- `Sources/MagSleep/StatusItemController.swift` — menu bar UI (icon per mode), config-dir watch + 15s fallback timer; menu: mode items with checkmarks (Sleep Mode / Always Off / Disabled), Launch at Login, Check for Updates, Report a Problem, Buy me a coffee, Uninstall, About
+- `Sources/MagSleep/StatusItemController.swift` — menu bar UI (icon per mode), config-dir watch + 15s fallback timer; menu: mode items with checkmarks (Sleep Mode / Always Off / Disabled), Launch at Login, Night Schedule, Check for Updates, Report a Problem, Buy me a coffee, Uninstall, About
 - `Sources/MagSleep/OnboardingWindowController.swift` — first-run setup window (install helper + pick mode + Launch at Login in one step)
 
 ## Development notes
@@ -87,4 +87,4 @@ magsleep-helper (root LaunchDaemon)
 
 `make test` runs `Tests/MagSleepCoreTests` (XCTest): request → config transitions, config decode/fallback, LED target logic, SMC struct layout, constants/paths, and the socket JSON protocol round-trips.
 
-The git **pre-commit hook** (`make install-hooks`) runs SwiftLint, the Periphery dead-code scan, `swift test`, and a warnings-as-errors build; a commit is blocked if any fails. It requires `swiftlint` and `periphery` installed (`brew install swiftlint periphery`). Keep the helper's entry point as `@main` (in `MagSleepHelperMain.swift`) — Periphery cannot trace top-level executable code and would otherwise report the whole daemon as dead. Known false positives are marked in-source with `// periphery:ignore` (SMC kernel-layout struct fields read via `IOConnectCallStructMethod`, and retained-for-lifetime properties).
+The git **pre-commit hook** (`make install-hooks`) runs SwiftLint, the Lethen dead-code scan, `swift test`, and a warnings-as-errors build; a commit is blocked if any fails. It requires `swiftlint` and `lethen` installed (`brew install swiftlint albovsky/tap/lethen`). Keep the helper's entry point as `@main` (in `MagSleepHelperMain.swift`) — Lethen cannot trace top-level executable code and would otherwise report the whole daemon as dead. Known false positives are marked in-source with `// periphery:ignore` (SMC kernel-layout struct fields read via `IOConnectCallStructMethod`, and retained-for-lifetime properties).

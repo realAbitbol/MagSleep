@@ -3,7 +3,7 @@
 #
 # Blocks a commit unless ALL of these pass:
 #   - SwiftLint (warnings treated as errors)
-#   - Periphery dead-code scan
+#   - Lethen dead-code scan
 #   - swift test
 #   - release build with warnings-as-errors
 #
@@ -15,17 +15,17 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Fail fast with helpful guidance instead of a bare "command not found" when
 # the tools aren't installed.
-if ! command -v swiftlint >/dev/null 2>&1 || ! command -v periphery >/dev/null 2>&1; then
-    echo "error: the pre-commit hook needs swiftlint and periphery." >&2
-    echo "Install them with: brew install swiftlint periphery" >&2
+if ! command -v swiftlint >/dev/null 2>&1 || ! command -v lethen >/dev/null 2>&1; then
+    echo "error: the pre-commit hook needs swiftlint and lethen." >&2
+    echo "Install them with: brew install swiftlint albovsky/tap/lethen" >&2
     exit 1
 fi
 
 echo "==> SwiftLint"
 swiftlint lint --strict
 
-echo "==> Periphery dead-code scan"
-periphery scan --strict
+echo "==> Lethen dead-code scan"
+lethen scan --strict
 
 echo "==> swift test"
 swift test

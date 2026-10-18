@@ -8,6 +8,28 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 `make release VERSION=x.y.z` extracts this file's `[x.y.z]` section and uses
 it for the GitHub release body and the in-app Sparkle update notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **An outdated helper is now visible**: after declining the "Outdated Helper Detected" prompt, the menu-bar icon switches to a download arrow and the tooltip reads "Helper update available", instead of the app silently continuing with the old helper
+- **"Disabled" is no longer reported as successful when the helper is not running**: the daemon owns the persisted config, so the disable could not have stuck — the menu now offers to reconnect instead of claiming success
+- **Sleep Mode self-heals a dropped wake event**: the 3 s watchdog cross-checks the live power state, so a missed `systemHasPoweredOn` can no longer pin the LED off
+- **Helper update detection now reads universal (fat) Mac-O binaries correctly**: the previous reader used the wrong `fat_arch` entry stride (16 instead of 20 bytes) and mis-read `fat_arch_64` fields, so any non-thin helper silently fell back to a git-revision comparison
+- The installer's `wait_for_job_gone` now reports whether the job actually went away rather than always "succeeding" (behaviour is unchanged: callers continue with a warning)
+
+### Changed
+
+- **Night Schedule is dimmed** while the helper is not running or is disabled, since the daemon is what enforces it
+- The menu-bar icon may briefly show the "waiting for helper" hourglass at launch: helper liveness is now probed off the main thread instead of blocking it
+- **Release pipeline hardening**: the Sparkle signing key and the VirusTotal key are scoped to the individual steps that use them (previously job-wide, so `swift test`/`swift build` could read them), GitHub Actions are pinned to commit SHAs (with Dependabot keeping them current), and the VirusTotal API key is no longer passed in `curl`'s argv
+- Install/update failures are now recorded in the unified log (subsystem `com.magsleep.app`) so they can be diagnosed after the fact
+
+### Internal
+
+- The daemon's socket server moved to `MagSleepCore`, and its line-framing and peer-authorization rules were extracted as pure, unit-tested types (`SocketFraming`, `PeerAuthorization`); the suite grew from 95 to 115 tests, including an integration test that drives a real server over a temp-path socket
+- `SECURITY.md` now documents the threat model and the install-time integrity check's limits
+
 ## [1.3.7] - 2026-09-22
 
 ### Fixed

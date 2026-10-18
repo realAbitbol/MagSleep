@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let bundleID = Bundle.main.bundleIdentifier,
            let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
                .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
-            existing.activate(options: [.activateAllWindows])
+            _ = existing.activate()
             NSApp.terminate(nil)
             return
         }

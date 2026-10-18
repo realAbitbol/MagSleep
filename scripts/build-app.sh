@@ -7,6 +7,10 @@ trap 'echo "" >&2
 
 cd "$(dirname "$0")/.."
 VERSION="${1:-1.0.0}"
+# Timestamp-derived: unique per build, and monotonically increasing for Sparkle.
+# It also guarantees two builds of the same commit differ byte-for-byte, so the
+# release artifacts are NOT reproducible — provenance is established by the
+# Sigstore attestation in .github/workflows/release.yml, not by rebuilding.
 BUILD_NUMBER="$(date +%Y%m%d%H%M)"
 DIST="dist"
 APP="$DIST/MagSleep.app"

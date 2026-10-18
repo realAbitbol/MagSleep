@@ -34,7 +34,7 @@ test:
 # Lint + dead-code scan (the same checks the pre-commit hook runs).
 lint:
 	swiftlint lint --strict
-	periphery scan --strict
+	lethen scan --strict
 
 # Point git at the tracked hooks directory (no copying; every clone gets it).
 install-hooks:

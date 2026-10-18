@@ -211,6 +211,68 @@ final class MachOContentHashTests: XCTestCase {
         XCTAssertNil(MachOContentHash.hexSHA256(of: Data("not a mach-o at all".utf8)))
     }
 
+    /// Wraps thin Mach-O slices into a fat container. `is64` selects the 32-byte
+    /// `fat_arch_64` entry layout; otherwise the 20-byte `fat_arch` is used.
+    private func fat(_ slices: [(cputype: UInt32, data: Data)], is64: Bool) -> Data {
+        func u32(_ value: UInt32) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
+        func u64(_ value: UInt64) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
+        let entryWidth = is64 ? 32 : 20
+        var header = Data()
+        header.append(u32(is64 ? 0xcafebabf : 0xcafebabe))
+        header.append(u32(UInt32(slices.count)))
+        var body = Data()
+        var cursor = 8 + entryWidth * slices.count
+        for slice in slices {
+            header.append(u32(slice.cputype))
+            header.append(u32(0)) // cpusubtype
+            if is64 {
+                header.append(u64(UInt64(cursor)))
+                header.append(u64(UInt64(slice.data.count)))
+                header.append(u32(0)) // align
+                header.append(u32(0)) // reserved
+            } else {
+                header.append(u32(UInt32(cursor)))
+                header.append(u32(UInt32(slice.data.count)))
+                header.append(u32(0)) // align
+            }
+            body.append(slice.data)
+            cursor += slice.data.count
+        }
+        return header + body
+    }
+
+    private let arm64CPUType: UInt32 = 0x0100_000c
+    private let intelCPUType: UInt32 = 0x0100_0007
+
+    func testHashFindsArm64InFat32Container() {
+        let thin = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let fatImage = fat([(arm64CPUType, thin)], is64: false)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: fatImage), MachOContentHash.hexSHA256(of: thin))
+    }
+
+    func testHashFindsArm64SecondInFat32Container() {
+        // The standard universal layout is x86_64 first, arm64 second. The entry
+        // stride must be 20 bytes (fat_arch) or the arm64 slice is never found —
+        // the regression this pins.
+        let arm = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let intel = makeMachO(contentByte: 0x42, sigByte: 0x02, vmsize: 64, filesize: 64, datasize: 32)
+        let fatImage = fat([(intelCPUType, intel), (arm64CPUType, arm)], is64: false)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: fatImage), MachOContentHash.hexSHA256(of: arm))
+    }
+
+    func testHashFindsArm64InFat64Container() {
+        let thin = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let fatImage = fat([(arm64CPUType, thin)], is64: true)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: fatImage), MachOContentHash.hexSHA256(of: thin))
+    }
+
+    func testHashFindsArm64SecondInFat64Container() {
+        let arm = makeMachO(contentByte: 0x41, sigByte: 0x01, vmsize: 32, filesize: 32, datasize: 16)
+        let intel = makeMachO(contentByte: 0x42, sigByte: 0x02, vmsize: 64, filesize: 64, datasize: 32)
+        let fatImage = fat([(intelCPUType, intel), (arm64CPUType, arm)], is64: true)
+        XCTAssertEqual(MachOContentHash.hexSHA256(of: fatImage), MachOContentHash.hexSHA256(of: arm))
+    }
+
     func testShouldReinstallByContentHash() {
         XCTAssertTrue(HelperVersioning.shouldReinstall(installedContentHash: "aaa", bundledContentHash: "bbb"))
         XCTAssertFalse(HelperVersioning.shouldReinstall(installedContentHash: "aaa", bundledContentHash: "aaa"))

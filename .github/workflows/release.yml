@@ -28,18 +28,21 @@ permissions:
 
 jobs:
   release:
-    # Pinned (not macos-latest) for reproducible release bytes — the standard
-    # images are Apple Silicon, which suits the arm64-only build.
+    # Pinned (not macos-latest) so the build environment is stable release to
+    # release. Note this does NOT make the bytes reproducible: build-app.sh
+    # stamps a wall-clock BUILD_NUMBER into Info.plist and build-info.json, so
+    # two builds of one commit differ. Provenance comes from the Sigstore
+    # attestation below, not from byte-identical rebuilds.
     runs-on: macos-15
-    env:
-      VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
-      SPARKLE_EDDSA_KEY: ${{ secrets.SPARKLE_EDDSA_KEY }}
-      # gh does not auto-read GITHUB_TOKEN in Actions — without GH_TOKEN the
-      # publish step fails with exit 4.
-      GH_TOKEN: ${{ github.token }}
     steps:
+      # Secrets are deliberately scoped per step rather than set at job level:
+      # job-level env is inherited by EVERY step, including `swift test` and
+      # `swift build`, which execute repository code and third-party build
+      # tooling. SPARKLE_EDDSA_KEY is the app's update-trust anchor, so it is
+      # exposed only to the steps that actually sign with it.
+      #
       # Full history: the appcast commit later lands on top of master.
-      - uses: actions/checkout@v7 # v4 targets deprecated Node 20
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -62,6 +65,11 @@ jobs:
       # advertise it (a prior run failed mid-commit), repair the feed from the
       # published ZIP without rebuilding.
       - name: Skip or repair feed if release already exists
+        # gh needs GH_TOKEN (Actions does not export it automatically); the
+        # repair path re-signs the feed, so it needs the signing key too.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_EDDSA_KEY: ${{ secrets.SPARKLE_EDDSA_KEY }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v$VERSION"
@@ -97,7 +105,7 @@ jobs:
           ./scripts/sign-appcast.sh "$VERSION" "$REPAIR"
           cp "$REPAIR/appcast.xml" appcast/appcast.xml
           git config user.name "MagSleep Release Bot"
-          git config user.email "magleep[bot]@users.noreply.github.com"
+          git config user.email "magsleep[bot]@users.noreply.github.com"
           git add appcast/appcast.xml
           if ! git diff --cached --quiet; then
             git commit -m "Repair Sparkle appcast for v$VERSION"
@@ -132,7 +140,7 @@ jobs:
       # realAbitbol. The attestations show on the release page once the
       # artifacts are uploaded.
       - name: Attest build provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             dist/MagSleep-${{ steps.version.outputs.version }}.dmg
@@ -140,6 +148,8 @@ jobs:
 
       - name: VirusTotal scan
         id: vt
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           scripts/virustotal-scan.sh "dist/MagSleep-$VERSION.dmg" | tee vt.out
@@ -185,6 +195,8 @@ jobs:
       # signing logic + guards (URL rewrite, EdDSA-signature assertion) live
       # in scripts/sign-appcast.sh.
       - name: Sign Sparkle appcast
+        env:
+          SPARKLE_EDDSA_KEY: ${{ secrets.SPARKLE_EDDSA_KEY }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ROOT="$(pwd -P)"
@@ -204,6 +216,8 @@ jobs:
           ./scripts/sign-appcast.sh "$VERSION" "$STAGE"
 
       - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v$VERSION"
@@ -229,7 +243,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "MagSleep Release Bot"
-          git config user.email "magleep[bot]@users.noreply.github.com"
+          git config user.email "magsleep[bot]@users.noreply.github.com"
           git checkout -B master origin/master
           cp appcast-staging/appcast.xml appcast/appcast.xml
 

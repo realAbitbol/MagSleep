@@ -1,17 +1,23 @@
+import Darwin
 import Foundation
-import MagSleepCore
 import os.log
 
 /// Event-driven unix-domain socket server for app → daemon requests.
 ///
 /// One connection per request: the app connects, sends a single JSON line, the
-/// daemon replies with a single JSON line and closes. All I/O happens on the
-/// main queue via dispatch sources (the same run-loop style as the rest of the
-/// daemon). The connecting peer's uid is surfaced via `getpeereid` so the
+/// daemon replies with a single JSON line and closes. All I/O happens on a
+/// single serial queue (the daemon uses the main queue, matching the rest of
+/// its run-loop style) via dispatch sources, so the connection table needs no
+/// locking. The connecting peer's uid is surfaced via `getpeereid` so the
 /// daemon can reject requests from other local users.
-final class SocketServer {
+///
+/// Lives in `MagSleepCore` (not the daemon target) so the accept/framing/idle
+/// behaviour is reachable from the unit-test suite.
+public final class SocketServer {
     private let path: String
     private let log = Logger(subsystem: "com.magsleep.helper", category: "socket")
+    /// The serial queue every dispatch source and connection is handled on.
+    private let queue: DispatchQueue
     /// Returns the exact bytes to send back (must include the trailing newline).
     private let onRequest: (String, uid_t?) -> String
 
@@ -33,15 +39,23 @@ final class SocketServer {
         var connectedAt = Date()
     }
 
-    init(path: String, onRequest: @escaping (String, uid_t?) -> String) {
+    /// - Parameter queue: the serial queue the server runs on. Defaults to the
+    ///   main queue (what the daemon uses); tests pass their own queue so they
+    ///   can drive the server without pumping the main run loop.
+    public init(
+        path: String,
+        queue: DispatchQueue = .main,
+        onRequest: @escaping (String, uid_t?) -> String
+    ) {
         self.path = path
+        self.queue = queue
         self.onRequest = onRequest
     }
 
     // MARK: - Lifecycle
 
     @discardableResult
-    func start() -> Bool {
+    public func start() -> Bool {
         guard listenFD < 0 else { return true } // already listening
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -88,7 +102,7 @@ final class SocketServer {
         _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
         listenFD = fd
 
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in
             self?.acceptPending()
         }
@@ -111,7 +125,7 @@ final class SocketServer {
         return true
     }
 
-    func stop() {
+    public func stop() {
         listenSource?.cancel()
         listenSource = nil
         idleSweepTimer?.invalidate()
@@ -132,7 +146,7 @@ final class SocketServer {
     /// Re-creates the listening socket if the socket file was deleted or
     /// replaced (e.g. /var/run cleaned by a third-party tool). Cheap; call
     /// from a slow timer.
-    func ensureSocketFileExists() {
+    public func ensureSocketFileExists() {
         guard listenFD >= 0 else { return }
         var st = stat()
         if stat(path, &st) != 0 || (st.st_mode & S_IFMT) != S_IFSOCK {
@@ -159,7 +173,7 @@ final class SocketServer {
             let flags = fcntl(clientFD, F_GETFL, 0)
             _ = fcntl(clientFD, F_SETFL, flags | O_NONBLOCK)
 
-            let source = DispatchSource.makeReadSource(fileDescriptor: clientFD, queue: .main)
+            let source = DispatchSource.makeReadSource(fileDescriptor: clientFD, queue: queue)
             source.setEventHandler { [weak self] in
                 self?.readFrom(clientFD)
             }
@@ -191,19 +205,16 @@ final class SocketServer {
         let n = read(fd, &buffer, buffer.count)
         if n > 0 {
             client.buffer.append(contentsOf: buffer[0..<n])
-            if client.buffer.count > MagSleep.maxMessageBytes {
+            switch SocketFraming.consume(buffer: client.buffer) {
+            case .tooLarge:
                 log.error("request too large; closing connection")
                 closeClient(fd)
-                return
-            }
-            if let newlineIndex = client.buffer.firstIndex(of: 0x0A) {
-                let lineData = client.buffer[..<newlineIndex]
-                let line = String(data: lineData, encoding: .utf8) ?? ""
+            case .line(let line):
                 respond(to: fd, line: line)
                 closeClient(fd)
-                return
+            case .incomplete:
+                clients[fd] = client
             }
-            clients[fd] = client
         } else if n == 0 {
             closeClient(fd) // peer closed before sending a full line
         } else if errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR {

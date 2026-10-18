@@ -48,6 +48,14 @@ fi
 #      one in a re-signed bundle) still fails this pin.
 # Both run before the bootout so a rejected bundle never disturbs the
 # currently installed (working) helper.
+#
+# LIMITATION (documented in SECURITY.md): both checks read the pin from the
+# same bundle they validate, so they catch *partial* tampering — a swapped
+# binary that leaves helper-cdhash.txt stale. They cannot catch a wholesale
+# replacement of the bundle (replace the binary, refresh the pin, re-sign
+# ad-hoc). Writing into the bundle already requires root, so this is
+# defence-in-depth against a mis-shipped bundle, not a privilege boundary
+# against someone who already controls /Applications.
 BUNDLE="$(dirname "$(dirname "$RESOURCES")")"
 if ! codesign --verify --deep --strict "$BUNDLE" 2>/dev/null; then
     echo "refusing to install: the MagSleep app bundle failed signature validation (tampered app?)" >&2
@@ -72,6 +80,11 @@ fi
 # out and immediately bootstrapping races with launchd's unload and commonly
 # fails with EIO. `launchctl print` exits non-zero only once the job is fully
 # gone from the domain.
+# Best effort: returns 0 once the job is gone, 1 if it is still loaded after
+# ~5s. Callers that can proceed regardless must make that explicit with
+# `wait_for_job_gone || warn`. Beware: a plain `for` loop returns the status of
+# its last command (`sleep`), so this function must `return` explicitly or it
+# would silently always succeed.
 wait_for_job_gone() {
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
@@ -79,11 +92,15 @@ wait_for_job_gone() {
         fi
         sleep 0.5
     done
+    return 1
 }
 
 launchctl bootout "system/$LABEL" 2>/dev/null || true
 launchctl enable "system/$LABEL" 2>/dev/null || true
-wait_for_job_gone
+# Proceed even if launchd is slow to release the job (the bootstrap loop below
+# re-bootouts and retries), but say so — a lingering job is the usual cause of
+# a cryptic "Bootstrap failed: 5".
+wait_for_job_gone || echo "warning: job still loaded after 5s; continuing" >&2
 
 install -m 755 -o root -g wheel "$RESOURCES/magsleep-helper" "$BIN"
 install -m 644 -o root -g wheel "$RESOURCES/$LABEL.plist" "$PLIST"
@@ -140,7 +157,7 @@ for attempt in 1 2 3; do
     echo "bootstrap attempt $attempt failed (exit $BOOTSTRAP_RC): $(cat "$BOOTSTRAP_ERR_FILE")" >&2
     sleep 2
     launchctl bootout "system/$LABEL" 2>/dev/null || true
-    wait_for_job_gone
+    wait_for_job_gone || echo "warning: job still loaded after 5s; retrying anyway" >&2
 done
 
 echo "MagSleep helper bootstrap failed" >&2

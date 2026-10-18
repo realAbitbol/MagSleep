@@ -1,0 +1,16 @@
+# Keeps the pinned GitHub Action SHAs (and the SwiftPM dependencies) current.
+#
+# Workflow actions are pinned to commit SHAs rather than mutable major tags
+# (see the comment in release.yml): the release job holds the app's Sparkle
+# update-signing key, so "v4" silently becoming different code is a real risk.
+# Dependabot raises a PR when a pinned SHA moves within its major version.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"

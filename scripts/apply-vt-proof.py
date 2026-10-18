@@ -17,6 +17,9 @@ import sys
 
 
 def main() -> int:
+    if len(sys.argv) < 5:
+        print("usage: apply-vt-proof.py VERSION BADGE LABEL PERMALINK", file=sys.stderr)
+        return 2
     version, badge, label, permalink = sys.argv[1:5]
 
     if badge:
@@ -34,7 +37,7 @@ def main() -> int:
             # place, and any different pre-existing badge line is replaced —
             # a re-run may carry a new permalink (a rebuilt DMG has a fresh
             # sha256), so badges must not stack between the markers.
-            lines = s[i + len(start):j].splitlines()
+            lines = s[i + len(start) : j].splitlines()
             if line in [ln for ln in lines if ln.startswith("[![VirusTotal]")]:
                 print("README badge already present — skipping", file=sys.stderr)
             else:

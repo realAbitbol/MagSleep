@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Sparkle
+import os.log
 
 /// Wraps Sparkle's programmatic updater (SPUUpdater).
 ///
@@ -18,6 +19,7 @@ final class UpdateManager: NSObject, SPUUpdaterDelegate {
     // can be created from the non-isolated AppKit entry points.
     private var updater: SPUUpdater?
     private let userDriver: SPUStandardUserDriver
+    private let log = Logger(subsystem: "com.magsleep.app", category: "update")
     /// Whether Sparkle started successfully. "Check for Updates…" no-ops
     /// silently when nil, so expose the failure for the menu to react to.
     private(set) var isAvailable = false
@@ -45,7 +47,7 @@ final class UpdateManager: NSObject, SPUUpdaterDelegate {
         do {
             try updater.start()
         } catch {
-            NSLog("MagSleep: Sparkle failed to start: \(error)")
+            log.error("Sparkle failed to start: \(String(describing: error), privacy: .public)")
             isAvailable = false
             return
         }

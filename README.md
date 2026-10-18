@@ -11,7 +11,7 @@ Perfect for a dark bedroom: no green/amber glow from the charger while you sleep
 
 ![Platform](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Arch](https://img.shields.io/badge/Apple%20Silicon-arm64-black)
-![Language](https://img.shields.io/badge/Swift-6-orange)
+![Language](https://img.shields.io/badge/Swift-5.10-orange)
 ![License](https://img.shields.io/badge/personal%20use-welcome-lightgrey)
 
 <!-- VT_BADGE -->
@@ -121,9 +121,10 @@ That's it. Sleep and wake are handled automatically — the helper keeps running
 | **Sleep Mode** | LED off while the Mac sleeps, restored to macOS on wake |
 | **Always Off** | LED stays off at all times (re-asserted even after plug-in/unplug) |
 | **Disabled** | Hand the LED back to macOS entirely |
+| **Night Schedule** | Keep the LED off from sunset to sunrise |
 | **Launch at Login** | Start MagSleep when you log in |
 | **Check for Updates…** | Check for updates via Sparkle (also checked automatically twice a day) |
-| **Report a Problem…** | Open the GitHub issue tracker with your app version + helper revision pre-filled |
+| **Report a Problem** | Open the GitHub issue tracker with your app version + helper revision pre-filled |
 | **Buy me a coffee** | [ko-fi.com/realabitbol](https://ko-fi.com/realabitbol) |
 | **Uninstall MagSleep…** | Full cleanup, then quit |
 | **About MagSleep…** | App version and helper status |
@@ -197,8 +198,8 @@ make dmg VERSION=1.3.7    # dist/MagSleep-1.3.7.dmg
 | `make install VERSION=x.y.z` | Copy the built app to `/Applications` (never silently rebuilds) |
 | `make run` | Build and open |
 | `make test` | Run the XCTest unit tests |
-| `make lint` | Run SwiftLint + Periphery dead-code scan (also runs in the git pre-commit hook) |
-| `make install-hooks` | Install the git pre-commit hook (SwiftLint, Periphery, tests, warnings-as-errors build); requires `swiftlint` and `periphery` (`brew install swiftlint periphery`) |
+| `make lint` | Run SwiftLint + Lethen dead-code scan (also runs in the git pre-commit hook) |
+| `make install-hooks` | Install the git pre-commit hook (SwiftLint, Lethen, tests, warnings-as-errors build); requires `swiftlint` and `lethen` (`brew install swiftlint albovsky/tap/lethen`) |
 | `make notarize` | Sign + notarize with a Developer ID cert if present (skips gracefully without one) |
 | `make release VERSION=x.y.z` | **CI-only release driver**: validate changelog, bump version refs, commit, tag `vx.y.z`, push — CI builds + publishes (no local build) |
 | `make clean` | Remove `.build` and `dist` |
@@ -241,4 +242,4 @@ MagSafe LED control is undocumented. A macOS or firmware update may change or br
 
 ## Tests
 
-`make test` runs `Tests/MagSleepCoreTests` (XCTest): request → config transitions, config decode/fallback, LED target logic, SMC struct layout, constants/paths, socket protocol round-trips, and version comparison.
+`make test` runs `Tests/MagSleepCoreTests` (XCTest): request → config transitions, config decode/fallback, LED target logic, SMC struct layout, constants/paths, socket protocol round-trips, socket framing and peer authorization, a live socket-server integration test, Mach-O content hashing (thin + fat), and version comparison.

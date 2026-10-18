@@ -30,7 +30,7 @@ public enum SMC {
     }
 
     // Kernel-layout mirrors: fields are read by AppleSMC via
-    // IOConnectCallStructMethod, which Periphery cannot see. The per-field
+    // IOConnectCallStructMethod, which Lethen cannot see. The per-field
     // periphery:ignore comments are the supported way to keep these.
 
     struct SMCVersion {

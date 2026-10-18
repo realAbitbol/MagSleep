@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import MagSleepCore
 import ServiceManagement
+import os.log
 
 /// Installs, enables, disables, and removes the privileged helper daemon.
 final class HelperManager {
@@ -63,6 +64,11 @@ final class HelperManager {
         )
     }
 
+    /// Logger for lifecycle diagnostics. The app deliberately has no in-app
+    /// debug surface, so install/update failures are only diagnosable if they
+    /// are recorded in the unified log.
+    private let log = Logger(subsystem: "com.magsleep.app", category: "helper")
+
     /// How often to re-probe the socket while confirming a fresh install.
     private let connectionConfirmInterval: TimeInterval = 1.0
     /// How long to wait for the daemon to come up before declaring failure.
@@ -72,30 +78,36 @@ final class HelperManager {
     private let privilegedScriptTimeout: TimeInterval = 180
 
     init() {
-        refresh()
+        // Load the cheap local state synchronously so the first menu draw is
+        // populated, then probe liveness off-main: this is constructed on the
+        // main thread at launch, and a stalled daemon must never freeze the UI.
+        loadLocalState()
+        refreshAsync()
     }
 
-    func refresh() {
+    /// Synchronous, non-blocking state load: whether the helper is installed
+    /// plus the persisted config. Liveness (`isLoaded`) is deliberately NOT
+    /// probed here — `refreshAsync` owns that, so a stalled daemon cannot block
+    /// the caller (this runs on the main thread at launch).
+    private func loadLocalState() {
         let fm = FileManager.default
         isInstalled = fm.fileExists(atPath: MagSleep.helperPlistPath)
             && fm.fileExists(atPath: MagSleep.helperBinaryPath)
-
-        // Cheap liveness probe: the daemon's unix socket only exists while it
-        // is listening, so a successful connect means it is actually running
-        // (no pgrep spawn, no caching).
-        isLoaded = isInstalled && HelperConnection.probe()
-        if isLoaded {
+        guard isInstalled else {
+            isLoaded = false
             connectionFailed = false
+            mode = .sleep
+            isEnabled = false
+            nightScheduleEnabled = false
+            return
         }
-
-        // Reload mode and enabled state from config
         loadConfig()
     }
 
-    /// Same as `refresh()`, but performs the (potentially blocking) socket
-    /// probe off the main thread and delivers the updated state on the main
-    /// queue. Prefer this for periodic/timer-driven refreshes so a slow or
-    /// unresponsive daemon can never stall the UI.
+    /// Re-reads install presence + config, and performs the (potentially
+    /// blocking) socket probe off the main thread, delivering the updated state
+    /// on the main queue. The way to refresh: a slow or unresponsive daemon can
+    /// never stall the UI.
     func refreshAsync(completion: (() -> Void)? = nil) {
         let fm = FileManager.default
         isInstalled = fm.fileExists(atPath: MagSleep.helperPlistPath)
@@ -135,6 +147,9 @@ final class HelperManager {
         }
         if !isLoaded {
             return connectionFailed ? "Can't connect to helper" : "Helper not running"
+        }
+        if needsUpgrade {
+            return "Helper update available"
         }
         if !isEnabled {
             return "Disabled"
@@ -299,6 +314,7 @@ final class HelperManager {
                         self.refreshAsync()
                         completion(true)
                     } else if Date().timeIntervalSince(start) >= self.connectionConfirmTimeout {
+                        self.log.error("helper installed but unreachable after \(self.connectionConfirmTimeout, privacy: .public)s")
                         self.isInstalling = false
                         self.isConfirmingConnection = false
                         self.connectionFailed = true
@@ -403,11 +419,15 @@ final class HelperManager {
             completion(true)
             return
         }
-        // Daemon down: the LED is already unmanaged — a successful no-op, not
-        // an error the user should see.
+        // The daemon owns the persisted config, so a disable cannot be made to
+        // stick while it is down: a revived daemon would load the old config and
+        // re-apply the mode, silently undoing this. Report failure so the menu
+        // offers to reconnect instead of claiming success.
         guard isLoaded else {
-            isEnabled = false
-            completion(true)
+            lastError = "Helper is not running"
+            log.warning("disable requested while the helper is not reachable")
+            refreshAsync()
+            completion(false)
             return
         }
         sendRequest(RequestCommand.disable) { [weak self] success in
@@ -527,6 +547,12 @@ final class HelperManager {
                 timeout: self.privilegedScriptTimeout
             )
             let stderr = String(data: result.stderr, encoding: .utf8) ?? ""
+            // Record the script outcome in the unified log so a user-reported
+            // install failure is diagnosable after the fact.
+            self.log.info("script \(scriptName, privacy: .public): exit \(result.terminationStatus), timedOut \(result.timedOut)")
+            if !stderr.isEmpty {
+                self.log.error("privileged script stderr: \(stderr, privacy: .public)")
+            }
 
             DispatchQueue.main.async {
                 self.refreshAsync()

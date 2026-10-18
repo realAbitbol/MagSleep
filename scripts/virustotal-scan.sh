@@ -9,6 +9,12 @@
 # Usage: scripts/virustotal-scan.sh <file>
 # Env:   VIRUSTOTAL_API_KEY  (required; missing -> status=skipped, exit 0)
 #
+# The API key is fed to curl on stdin (`-H @-`) rather than as an argument: a
+# process's argv is world-readable via `ps` for the lifetime of the call, which
+# is exactly the leak this project avoids for the Sparkle key (see
+# sign-appcast.sh). Note this script also *borrows* the API key env var — it is
+# injected from the environment by the caller.
+#
 # Best-effort by design: the permalink is derivable from the local sha256, so
 # even a total VirusTotal failure still yields a proof link, and the script
 # always exits 0 — a release is never blocked by VirusTotal.
@@ -49,8 +55,8 @@ print(lookup(json.loads(sys.argv[1]), sys.argv[2]))
 ' "$1" "$2" 2>/dev/null || true
 }
 
-UPLOAD_JSON="$(curl -sS --max-time 30 -X POST \
-    -H "x-apikey: $VIRUSTOTAL_API_KEY" \
+UPLOAD_JSON="$(printf 'x-apikey: %s\n' "$VIRUSTOTAL_API_KEY" | curl -sS --max-time 30 -X POST \
+    -H @- \
     -F "file=@$FILE" \
     "$API/files" 2>/dev/null || true)"
 
@@ -70,8 +76,8 @@ POLLS=12
 EMPTY_IN_A_ROW=0
 for _ in $(seq 1 "$POLLS"); do
     sleep 25
-    RESULT="$(curl -sS --max-time 30 \
-        -H "x-apikey: $VIRUSTOTAL_API_KEY" \
+    RESULT="$(printf 'x-apikey: %s\n' "$VIRUSTOTAL_API_KEY" | curl -sS --max-time 30 \
+        -H @- \
         "$API/analyses/$ANALYSIS_ID" 2>/dev/null || true)"
     STATUS="$(json_field "$RESULT" "data.attributes.status")"
     if [ -z "$STATUS" ]; then
