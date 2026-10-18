@@ -10,6 +10,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # `github/codeql-action` is consumed as three subpaths (init, autobuild,
+    # analyze). They live in ONE repository and must all resolve to the same
+    # commit — CodeQL requires matching versions — so they are grouped into a
+    # single PR. Without this, Dependabot opens one PR per subpath and merging
+    # just one leaves the workflow on mixed versions.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
   - package-ecosystem: "swift"
     directory: "/"
     schedule:
