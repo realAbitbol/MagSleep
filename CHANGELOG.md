@@ -29,6 +29,7 @@ it for the GitHub release body and the in-app Sparkle update notes.
 
 - The daemon's socket server moved to `MagSleepCore`, and its line-framing and peer-authorization rules were extracted as pure, unit-tested types (`SocketFraming`, `PeerAuthorization`); the suite grew from 95 to 115 tests, including an integration test that drives a real server over a temp-path socket
 - `SECURITY.md` now documents the threat model and the install-time integrity check's limits
+- VirusTotal scan of the DMG: [0 malicious / 75 engines](https://www.virustotal.com/gui/file/7fadd74ab1603311e150802774f018b18dccd4006c9b03e57bdfb42402d6065d/detection)
 
 ## [1.3.7] - 2026-09-22
 

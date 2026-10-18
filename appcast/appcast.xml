@@ -3,6 +3,37 @@
     <channel>
         <title>MagSleep</title>
         <item>
+            <title>1.3.8</title>
+            <pubDate>Sun, 18 Oct 2026 00:53:05 +0000</pubDate>
+            <sparkle:version>202610180052</sparkle:version>
+            <sparkle:shortVersionString>1.3.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Fixed
+
+- **An outdated helper is now visible**: after declining the "Outdated Helper Detected" prompt, the menu-bar icon switches to a download arrow and the tooltip reads "Helper update available", instead of the app silently continuing with the old helper
+- **"Disabled" is no longer reported as successful when the helper is not running**: the daemon owns the persisted config, so the disable could not have stuck — the menu now offers to reconnect instead of claiming success
+- **Sleep Mode self-heals a dropped wake event**: the 3 s watchdog cross-checks the live power state, so a missed `systemHasPoweredOn` can no longer pin the LED off
+- **Helper update detection now reads universal (fat) Mac-O binaries correctly**: the previous reader used the wrong `fat_arch` entry stride (16 instead of 20 bytes) and mis-read `fat_arch_64` fields, so any non-thin helper silently fell back to a git-revision comparison
+- The installer's `wait_for_job_gone` now reports whether the job actually went away rather than always "succeeding" (behaviour is unchanged: callers continue with a warning)
+
+### Changed
+
+- **Night Schedule is dimmed** while the helper is not running or is disabled, since the daemon is what enforces it
+- The menu-bar icon may briefly show the "waiting for helper" hourglass at launch: helper liveness is now probed off the main thread instead of blocking it
+- **Release pipeline hardening**: the Sparkle signing key and the VirusTotal key are scoped to the individual steps that use them (previously job-wide, so `swift test`/`swift build` could read them), GitHub Actions are pinned to commit SHAs (with Dependabot keeping them current), and the VirusTotal API key is no longer passed in `curl`'s argv
+- Install/update failures are now recorded in the unified log (subsystem `com.magsleep.app`) so they can be diagnosed after the fact
+
+### Internal
+
+- The daemon's socket server moved to `MagSleepCore`, and its line-framing and peer-authorization rules were extracted as pure, unit-tested types (`SocketFraming`, `PeerAuthorization`); the suite grew from 95 to 115 tests, including an integration test that drives a real server over a temp-path socket
+- `SECURITY.md` now documents the threat model and the install-time integrity check's limits
+
+]]></description>
+            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.8/MagSleep-1.3.8.zip" length="2534379" type="application/octet-stream" sparkle:edSignature="5WeuEooyj6NDVzNUsMvoDe3YiJSDKCXgsmBCKWrNldZBA12+Zi6KmqdsGYQzKCe8GW3nc34Hb43gtYfy9Ux1Bg=="/>
+        </item>
+        <item>
             <title>1.3.7</title>
             <pubDate>Tue, 22 Sep 2026 18:56:49 +0000</pubDate>
             <sparkle:version>202609221854</sparkle:version>
@@ -31,21 +62,6 @@
 
 ]]></description>
             <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.6/MagSleep-1.3.6.zip" length="2512691" type="application/octet-stream" sparkle:edSignature="6favOZy0IaKxHb+9b0WJjfVO4VzYsx26kzpq4D3Y9OQztqxpqKaaONztV6AdKVyJrowK86HvtA/FInK49QkQAg=="/>
-        </item>
-        <item>
-            <title>1.3.5</title>
-            <pubDate>Tue, 22 Sep 2026 18:43:23 +0000</pubDate>
-            <sparkle:version>202609221842</sparkle:version>
-            <sparkle:shortVersionString>1.3.5</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[
-### Fixed
-
-- **Admin prompt on every reboot**: around login macOS starts the helper at roughly the same time as the app, and on macOS 27 the daemon took 15–25 s to become reachable — its process cold-starts slowly and `IORegisterForSystemPower` blocked for ~8 s *before* the request socket was bound. The app's launch recovery waited only ~4.5 s, then "repaired" the daemon by running the privileged install script — an admin prompt at every boot. The daemon now binds its socket before the IOKit power registrations, and the app waits up to 45 s for the daemon to come up before deciding it needs repair
-
-]]></description>
-            <enclosure url="https://github.com/realAbitbol/MagSleep/releases/download/v1.3.5/MagSleep-1.3.5.zip" length="2512497" type="application/octet-stream" sparkle:edSignature="pNI254WCIxVjmRJSSRCdddrvtB2vTS8MA4mha+Zw5GbPoHxErc2AFy8Bytm113bVlejPEWaisRM5UQm8r0/kDw=="/>
         </item>
     </channel>
 </rss>
